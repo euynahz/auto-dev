@@ -162,6 +162,7 @@ function buildClaudeArgs(prompt: string, project: ProjectData, maxTurns: number)
     '--max-turns', String(maxTurns),
     '--model', project.model,
     '--dangerously-skip-permissions',
+    '--disable-slash-commands',
   ]
   if (project.systemPrompt) {
     args.push('--system-prompt', project.systemPrompt)
