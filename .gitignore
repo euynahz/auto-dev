@@ -25,3 +25,4 @@ dist-ssr
 .claude/*.local.json
 .autodev-data/
 package-lock.json
+workspace/

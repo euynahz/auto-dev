@@ -1176,8 +1176,21 @@ export function startAgent(projectId: string) {
 
   log.agent(`启动 Agent (project=${projectId}, model=${project.model}, concurrency=${project.concurrency}, agentTeams=${project.useAgentTeams})`)
 
-  // Agent Teams 模式：跳过 initializing，直接 running，启动单个全流程 session
+  // Agent Teams 模式
   if (project.useAgentTeams) {
+    // 如果需要审查且尚未初始化，先跑 initializer 生成 feature list
+    if (project.reviewBeforeCoding) {
+      const sessions = projectService.getSessions(projectId)
+      const hasInitialized = sessions.some((s) => s.type === 'initializer' && s.status === 'completed')
+      if (!hasInitialized) {
+        log.agent(`Agent Teams + 审查模式：先启动 initializer 生成 feature list`)
+        projectService.updateProject(projectId, { status: 'initializing' })
+        broadcast({ type: 'status', projectId, status: 'initializing' })
+        startFeatureWatcher(projectId)
+        startSession(projectId, 'initializer', 0)
+        return
+      }
+    }
     projectService.updateProject(projectId, { status: 'running' })
     broadcast({ type: 'status', projectId, status: 'running' })
     startFeatureWatcher(projectId)
@@ -1530,6 +1543,13 @@ export function confirmReview(projectId: string) {
   projectService.updateProject(projectId, { status: 'running' })
   broadcast({ type: 'status', projectId, status: 'running' })
   startFeatureWatcher(projectId)
+
+  // Agent Teams 模式：审查确认后启动 agent-teams session
+  if (project.useAgentTeams) {
+    log.agent(`Agent Teams 模式，审查确认后启动 agent-teams session`)
+    startAgentTeamsSession(projectId)
+    return
+  }
 
   const concurrency = project.concurrency || 1
   if (concurrency <= 1) {

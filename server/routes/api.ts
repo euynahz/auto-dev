@@ -48,7 +48,7 @@ router.post('/projects', (req, res) => {
     return res.status(400).json({ message: '名称和需求描述不能为空' })
   }
 
-  log.api(`POST /projects — 创建项目: ${name} (model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
+  log.api(`POST /projects — 创建项目: ${name} (path=${dirPath || '(auto)'}, model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
   const project = projectService.createProject(name, spec, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, dirPath, forceClean)
   res.json({
     ...project,
