@@ -1,0 +1,194 @@
+import { create } from 'zustand'
+import type { Project, LogEntry, HelpRequest, WSMessage } from '@/types'
+
+interface AgentCountInfo {
+  active: number
+  total: number
+}
+
+interface AppState {
+  // 项目列表
+  projects: Project[]
+  setProjects: (projects: Project[]) => void
+  updateProject: (id: string, updates: Partial<Project>) => void
+  addProject: (project: Project) => void
+  removeProject: (id: string) => void
+
+  // 当前查看的项目
+  currentProject: Project | null
+  setCurrentProject: (project: Project | null) => void
+
+  // 实时日志
+  logs: Record<string, LogEntry[]>
+  setLogs: (projectId: string, entries: LogEntry[]) => void
+  addLog: (projectId: string, entry: LogEntry) => void
+  clearLogs: (projectId: string) => void
+
+  // Agent 活跃数量
+  agentCounts: Record<string, AgentCountInfo>
+  setAgentCount: (projectId: string, info: AgentCountInfo) => void
+
+  // 人工协助请求
+  helpRequests: Record<string, HelpRequest[]>
+  setHelpRequests: (projectId: string, requests: HelpRequest[]) => void
+  addHelpRequest: (projectId: string, request: HelpRequest) => void
+  resolveHelpRequest: (projectId: string, requestId: string) => void
+
+  // WebSocket 连接状态
+  wsConnected: boolean
+  setWsConnected: (connected: boolean) => void
+
+  // 处理 WebSocket 消息
+  handleWSMessage: (msg: WSMessage) => void
+}
+
+export const useStore = create<AppState>((set, get) => ({
+  projects: [],
+  setProjects: (projects) => set({ projects }),
+  updateProject: (id, updates) =>
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+      currentProject:
+        state.currentProject?.id === id
+          ? { ...state.currentProject, ...updates }
+          : state.currentProject,
+    })),
+  addProject: (project) =>
+    set((state) => ({ projects: [project, ...state.projects] })),
+  removeProject: (id) =>
+    set((state) => ({ projects: state.projects.filter((p) => p.id !== id) })),
+
+  currentProject: null,
+  setCurrentProject: (project) => set({ currentProject: project }),
+
+  logs: {},
+  setLogs: (projectId, entries) =>
+    set((state) => ({
+      logs: { ...state.logs, [projectId]: entries },
+    })),
+  addLog: (projectId, entry) =>
+    set((state) => {
+      const existing = state.logs[projectId] || []
+
+      // 临时日志（thinking）：替换同一 agent 的上一条临时日志，而非追加
+      if (entry.temporary) {
+        const lastIdx = existing.length - 1
+        const last = existing[lastIdx]
+        if (last && last.temporary && last.agentIndex === entry.agentIndex) {
+          const updated = [...existing]
+          updated[lastIdx] = entry
+          return { logs: { ...state.logs, [projectId]: updated } }
+        }
+      }
+
+      // Cap at 3000 entries to prevent unbounded memory growth
+      const MAX_LOGS = 3000
+      const next = existing.length >= MAX_LOGS
+        ? [...existing.slice(-(MAX_LOGS - 1)), entry]
+        : [...existing, entry]
+
+      return { logs: { ...state.logs, [projectId]: next } }
+    }),
+  clearLogs: (projectId) =>
+    set((state) => ({
+      logs: { ...state.logs, [projectId]: [] },
+    })),
+
+  agentCounts: {},
+  setAgentCount: (projectId, info) =>
+    set((state) => ({
+      agentCounts: { ...state.agentCounts, [projectId]: info },
+    })),
+
+  helpRequests: {},
+  setHelpRequests: (projectId, requests) =>
+    set((state) => ({
+      helpRequests: { ...state.helpRequests, [projectId]: requests },
+    })),
+  addHelpRequest: (projectId, request) =>
+    set((state) => ({
+      helpRequests: {
+        ...state.helpRequests,
+        [projectId]: [...(state.helpRequests[projectId] || []), request],
+      },
+    })),
+  resolveHelpRequest: (projectId, requestId) =>
+    set((state) => ({
+      helpRequests: {
+        ...state.helpRequests,
+        [projectId]: (state.helpRequests[projectId] || []).filter((r) => r.id !== requestId),
+      },
+    })),
+
+  wsConnected: false,
+  setWsConnected: (connected) => set({ wsConnected: connected }),
+
+  handleWSMessage: (msg) => {
+    const { updateProject, addLog, setAgentCount, addHelpRequest } = get()
+    switch (msg.type) {
+      case 'log':
+        addLog(msg.projectId, msg.entry)
+        break
+      case 'status':
+        updateProject(msg.projectId, { status: msg.status })
+        break
+      case 'progress':
+        updateProject(msg.projectId, { progress: msg.progress })
+        break
+      case 'agent_count':
+        setAgentCount(msg.projectId, { active: msg.active, total: msg.total })
+        break
+      case 'human_help':
+        addHelpRequest(msg.projectId, msg.request)
+        break
+      case 'features_sync':
+        set((state) => {
+          const features = msg.features
+          const passed = features.filter((f) => f.passes).length
+          const updates = {
+            features,
+            progress: { total: features.length, passed, percentage: features.length ? (passed / features.length) * 100 : 0 },
+          }
+          return {
+            projects: state.projects.map((p) => (p.id === msg.projectId ? { ...p, ...updates } : p)),
+            currentProject: state.currentProject?.id === msg.projectId ? { ...state.currentProject, ...updates } : state.currentProject,
+          }
+        })
+        break
+      case 'feature_update':
+        set((state) => {
+          // 优先从 currentProject 获取 features（比 projects 数组更可能是最新的）
+          const current = state.currentProject?.id === msg.projectId ? state.currentProject : null
+          const project = current || state.projects.find((p) => p.id === msg.projectId)
+          if (!project) return state
+          const features = project.features.map((f) =>
+            f.id === msg.featureId ? { ...f, passes: msg.passes } : f
+          )
+          const passed = features.filter((f) => f.passes).length
+          const updates = {
+            features,
+            progress: { total: features.length, passed, percentage: features.length ? (passed / features.length) * 100 : 0 },
+          }
+          return {
+            projects: state.projects.map((p) => (p.id === msg.projectId ? { ...p, ...updates } : p)),
+            currentProject: state.currentProject?.id === msg.projectId ? { ...state.currentProject, ...updates } : state.currentProject,
+          }
+        })
+        break
+      case 'session_update':
+        set((state) => {
+          const project = state.projects.find((p) => p.id === msg.projectId)
+          if (!project) return state
+          const sessions = project.sessions.some((s) => s.id === msg.session.id)
+            ? project.sessions.map((s) => (s.id === msg.session.id ? msg.session : s))
+            : [...project.sessions, msg.session]
+          const updates = { sessions }
+          return {
+            projects: state.projects.map((p) => (p.id === msg.projectId ? { ...p, ...updates } : p)),
+            currentProject: state.currentProject?.id === msg.projectId ? { ...state.currentProject, ...updates } : state.currentProject,
+          }
+        })
+        break
+    }
+  },
+}))

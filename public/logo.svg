@@ -1,0 +1,23 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="autoDevGradient" x1="0" y1="256" x2="512" y2="256" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#2563EB" /> <stop offset="100%" stop-color="#06B6D4" /> </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="5" result="blur"/>
+            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+        </filter>
+    </defs>
+
+    <g filter="url(#glow)">
+        <path d="M256 192C220.654 192 192 220.654 192 256C192 291.346 220.654 320 256 320C291.346 320 320 291.346 320 256C320 220.654 291.346 192 256 192ZM256 288C238.327 288 224 273.673 224 256C224 238.327 238.327 224 256 224C273.673 224 288 238.327 288 256C288 273.673 273.673 288 256 288Z" fill="url(#autoDevGradient)" opacity="0.8"/>
+        <circle cx="256" cy="256" r="16" fill="#FFFFFF"/>
+
+        <path d="M64 224C64 224 128 224 160 176C192 128 256 128 288 160C320 192 368 224 416 224H448L384 160" stroke="url(#autoDevGradient)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <path d="M64 288C64 288 128 288 160 336C192 384 256 384 288 352C320 320 368 288 416 288H448L384 352" stroke="url(#autoDevGradient)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <path d="M416 224L480 256L416 288" stroke="url(#autoDevGradient)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <path d="M96 176L48 256L96 336" stroke="url(#autoDevGradient)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+    </g>
+</svg>
