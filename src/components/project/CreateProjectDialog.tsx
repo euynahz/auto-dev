@@ -176,7 +176,7 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
         ) : (
           <>
             <div className={cn(isHorizontal ? 'flex gap-6' : 'space-y-4', 'py-4')}>
-              <div className={cn(isHorizontal ? 'w-1/2 space-y-4' : 'space-y-4')}>
+              <div className={cn(isHorizontal ? 'w-1/2 space-y-4 max-h-[60vh] overflow-y-auto pr-2' : 'space-y-4')}>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Project Directory</label>
                   <Input placeholder="e.g. /home/user/projects/my-app (leave empty to auto-generate)" value={dirPath} onChange={(e) => handleDirPathChange(e.target.value)} />
