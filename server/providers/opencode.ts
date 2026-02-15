@@ -34,7 +34,6 @@ export const opencodeProvider: AgentProvider = {
     const args = [
       'run',
       '--format', 'json',
-      '--quiet',
     ]
     if (title) {
       args.push('--title', title)
