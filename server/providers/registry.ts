@@ -1,12 +1,16 @@
 import type { AgentProvider } from './types.js'
 import { claudeProvider } from './claude.js'
+import { codexProvider } from './codex.js'
+import { opencodeProvider } from './opencode.js'
 
 // ===== Provider 注册表 =====
 
 const providers = new Map<string, AgentProvider>()
 
-// 内置 provider
+// 内置 providers
 providers.set('claude', claudeProvider)
+providers.set('codex', codexProvider)
+providers.set('opencode', opencodeProvider)
 
 /** 获取 provider，不存在则返回 undefined */
 export function getProvider(name: string): AgentProvider | undefined {
