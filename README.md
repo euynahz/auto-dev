@@ -1,10 +1,21 @@
 # AutoDev
 
-基于 Claude Code 的 AI 全自动开发平台。输入需求或导入已有项目，AI Agent 自动拆解为功能点并逐个实现，支持多 Agent 并行开发。
+AI 全自动开发平台，支持多 AI 工具后端。输入需求或导入已有项目，AI Agent 自动拆解为功能点并逐个实现，支持多 Agent 并行开发。
 
 ![Screenshot](./assets/screenshot.png)
 
 ## 项目特点
+
+### 🔌 Provider 插件化架构
+
+底层 AI 工具完全解耦，通过 Provider 接口适配不同 AI 编码工具：
+
+- **AgentProvider 接口** — 统一的 `buildArgs` / `parseLine` / `isSuccessExit` / `capabilities` 声明
+- **AgentEvent 标准化** — 所有 provider 输出统一转为 `text` / `thinking` / `tool_use` / `system` / `error` 事件
+- **内置 Claude Code** — 默认 provider，完整支持 `stream-json` 流式输出解析
+- **零代码扩展** — 实现 `AgentProvider` 接口 + `registerProvider()` 注册即可接入新工具
+- **能力声明** — 每个 provider 声明自己支持的功能（streaming / maxTurns / systemPrompt / agentTeams / modelSelection / dangerousMode），系统自动适配
+- **`GET /api/providers`** — 前端动态获取可用 provider 列表及能力，UI 自动适配
 
 ### 🧠 基于 Anthropic 长时间 Agent 研究
 
@@ -27,13 +38,13 @@
 
 ### 🤖 Agent Teams 模式
 
-第三种执行模式 — 系统只启动一个 Claude 会话，由 Claude 内部使用 Agent Teams 功能自主协调多个子 Agent：
+第三种执行模式 — 系统只启动一个 AI 会话，由 AI 内部使用 Agent Teams 功能自主协调多个子 Agent：
 
-- 协调逻辑从系统侧转移到 Claude 内部，Claude 自主决定任务分配和并行策略
-- 单个 Claude 进程使用 TeamCreate、TaskCreate、SendMessage 等内置工具管理子 Agent
+- 协调逻辑从系统侧转移到 AI 内部，AI 自主决定任务分配和并行策略
 - 全流程自动化：理解需求 → 规划架构 → 生成 Feature List → 初始化项目 → 并行开发 → 收尾
 - 所有 Agent 在 main 分支工作，通过频繁提交避免冲突
 - 创建项目时勾选「Agent Teams 模式」即可启用
+- 需要 provider 支持 `agentTeams` 能力（目前仅 Claude Code 支持）
 
 ### 🎯 项目级系统提示词
 
@@ -86,12 +97,21 @@ Agent 不是孤岛，遇到问题会主动求助：
 
 面向生产环境的可靠性考量：
 
-- **进程恢复** — 服务重启时自动检测孤儿 claude 进程，通过持久化的 PID 清理并重置状态
-- **日志持久化** — 每个 Session 的 Claude 原始输出完整写入 `.autodev-data/claude-logs/{sessionId}.log`
+- **Token 认证** — `AUTODEV_TOKEN` 环境变量控制 API 和 WebSocket 访问（Bearer header / query param），不设则跳过
+- **路径沙箱** — `isPathSafe()` 限制 checkDir / importProject / raw-log 路径范围（home / tmp / cwd），防止路径穿越
+- **显式状态机** — `state-machine.ts` 定义所有合法状态转换，替代散落的 if-else，杜绝非法状态
+- **墙钟超时** — 30 分钟无 stdout 输出自动 SIGTERM + SIGKILL，防止僵尸进程
+- **重试上限** — 单个 Feature 最多重试 3 次，超限自动跳过并标记，防止无限循环
+- **Feature 生命周期** — `failCount` / `lastAttemptAt` 追踪失败历史，`inProgress` 系统级管理（非 Agent 自行设置）
+- **claimedFeatures 持久化** — 写入 `claimed.json`，服务重启后自动恢复认领状态
+- **进程恢复** — 服务重启时自动检测孤儿进程，通过持久化的 PID 清理并重置状态
+- **WebSocket 心跳** — 服务端 30s ping/pong，僵尸连接自动 terminate
+- **指数退避重连** — 客户端断线后 3s → 6s → 12s → 24s → 30s cap，重连后自动刷新状态
+- **日志持久化** — JSONL append-only 格式，5000 条自动截断，旧 `logs.json` 自动迁移
 - **智能日志过滤** — JSON 格式的思考过程解析为可读摘要实时展示（不持久化），减少噪音
 - **前端性能优化** — `React.memo` + `content-visibility: auto` 实现浏览器原生虚拟化，日志上限 3000 条防止内存溢出
 - **启动心跳** — 15 秒无输出时显示等待提示，避免用户以为卡死
-- **优雅停止** — SIGTERM → 等待 3s → SIGKILL，确保进程不残留
+- **优雅停止** — SIGTERM → 等待 5s → SIGKILL，确保进程不残留
 
 ---
 
@@ -102,7 +122,9 @@ Agent 不是孤岛，遇到问题会主动求助：
 | 前端 | React 19 + TypeScript + Vite + Tailwind CSS v4 + Radix UI |
 | 状态管理 | Zustand |
 | 后端 | Express + WebSocket (ws) |
-| AI 引擎 | Claude Code CLI (`claude --output-format stream-json`) |
+| AI 引擎 | Provider 插件化（内置 Claude Code CLI，可扩展 Codex / Gemini / Aider 等） |
+| 状态管理（后端） | 显式状态机（state-machine.ts） |
+| 测试 | Vitest（61 tests） |
 | 版本控制 | Git（分支隔离 + 自动合并） |
 
 ## 快速开始
@@ -119,17 +141,77 @@ npm start
 - 后端 API：`http://localhost:3001`
 - WebSocket：`ws://localhost:3001/ws`
 
-前提条件：已安装并配置好 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)。
+前提条件：已安装并配置好至少一个 AI 编码工具（默认 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)）。
+
+### 安全配置（可选）
+
+```bash
+# 设置 API Token（不设则跳过认证）
+export AUTODEV_TOKEN=your-secret-token
+```
+
+### 测试
+
+```bash
+npm test          # 运行 61 个单元测试
+```
+
+## 扩展 Provider
+
+实现 `AgentProvider` 接口即可接入新的 AI 编码工具：
+
+```typescript
+// server/providers/codex.ts
+import type { AgentProvider } from './types.js'
+
+export const codexProvider: AgentProvider = {
+  name: 'codex',
+  displayName: 'OpenAI Codex',
+  binary: 'codex',
+  capabilities: {
+    streaming: true,
+    maxTurns: false,
+    systemPrompt: true,
+    agentTeams: false,
+    modelSelection: true,
+    dangerousMode: false,
+  },
+  buildArgs(ctx) {
+    return ['--json', '-p', ctx.prompt, '--model', ctx.model]
+  },
+  parseLine(line) {
+    // 解析 codex 的输出格式 → 标准化 AgentEvent
+    const event = JSON.parse(line)
+    if (event.type === 'message') return { type: 'text', content: event.content }
+    return { type: 'ignore' }
+  },
+  isSuccessExit(code) { return code === 0 },
+}
+```
+
+然后在 `registry.ts` 中注册：
+
+```typescript
+import { codexProvider } from './codex.js'
+registerProvider(codexProvider)
+```
+
+前端 Provider 选择器自动出现新选项，零 UI 改动。
 
 ## 项目结构
 
 ```
 ├── server/                    # 后端服务
-│   ├── index.ts               # Express + WebSocket 入口
-│   ├── routes/api.ts          # REST API 路由
+│   ├── index.ts               # Express + WebSocket 入口（含心跳 + token 认证）
+│   ├── routes/api.ts          # REST API 路由（含 auth 中间件 + 路径沙箱）
+│   ├── providers/             # AI Provider 插件层
+│   │   ├── types.ts           # AgentProvider 接口 + AgentEvent 标准化事件
+│   │   ├── claude.ts          # Claude Code CLI 实现
+│   │   └── registry.ts        # Provider 注册表 + 查询 API
 │   ├── services/
-│   │   ├── agent.ts           # Agent 调度引擎（核心）
-│   │   └── project.ts         # 项目 CRUD + Feature 同步
+│   │   ├── agent.ts           # Agent 调度引擎（核心，provider-agnostic）
+│   │   ├── project.ts         # 项目 CRUD + Feature 同步 + 路径沙箱
+│   │   └── state-machine.ts   # 项目状态机（显式状态转换表）
 │   ├── prompts/
 │   │   ├── initializer.md     # 初始化 Agent 提示词
 │   │   ├── append-initializer.md # 追加需求拆解提示词
@@ -146,17 +228,18 @@ npm start
 │   │   ├── project/           # CreateProjectDialog, ImportProjectDialog, FeatureList
 │   │   └── agent/             # AgentLog, SessionTimeline, HelpDialog
 │   ├── store/index.ts         # Zustand 全局状态
-│   ├── hooks/useWebSocket.ts  # WebSocket 连接管理
+│   ├── hooks/useWebSocket.ts  # WebSocket 连接管理（指数退避重连）
 │   └── lib/api.ts             # API 客户端
 └── .autodev-data/             # 运行时数据（自动创建）
-    ├── projects/              # 项目元数据 + Feature + Session + 日志
-    └── claude-logs/           # Claude 原始输出日志
+    ├── projects/              # 项目元数据 + Feature + Session + 日志（JSONL）
+    └── claude-logs/           # Agent 原始输出日志
 ```
 
 ## API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/api/providers` | 可用 AI Provider 列表及能力声明 |
 | GET | `/api/projects` | 项目列表 |
 | GET | `/api/projects/:id` | 项目详情 |
 | POST | `/api/projects` | 创建项目 |
@@ -205,6 +288,23 @@ WebSocket `/ws` 推送消息类型：`log`、`status`、`progress`、`feature_up
         │ 单 Agent   │  │ 多 Agent     │  │ Agent Teams  │
         │ 串行模式    │  │ 并行模式      │  │ 自主协调模式  │
         └────────────┘  └──────────────┘  └──────────────┘
+               │               │                │
+               └───────────────┼────────────────┘
+                               ▼
+                    ┌─────────────────────┐
+                    │   Provider 抽象层    │
+                    │                     │
+                    │  buildArgs()        │
+                    │  parseLine()        │
+                    │  isSuccessExit()    │
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+        ┌──────────┐   ┌──────────┐    ┌──────────┐
+        │  Claude  │   │  Codex   │    │  Gemini  │
+        │  Code    │   │  CLI     │    │  CLI     │
+        └──────────┘   └──────────┘    └──────────┘
 ```
 
 > Agent Teams 模式在创建项目时勾选启用，跳过上述分支判断，直接启动单个全流程 Claude 会话。
