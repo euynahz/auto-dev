@@ -19,6 +19,13 @@ cat feature_list.json
 ```
 Find the first feature with `passes: false` — this is the feature to implement in this session.
 
+### Step 2.5: Read Architecture & Feature Context
+```bash
+cat architecture.md
+cat .features/feature-{id}.md
+```
+Read the architecture document for overall design context, then read the feature's context file for specific implementation guidance (related files, dependencies, architectural constraints). If these files don't exist, proceed without them.
+
 ### Step 3: Review Git History
 ```bash
 git log --oneline -20
@@ -45,10 +52,17 @@ git commit -m "chore: mark [feature-id] as in-progress"
 - Write clear code comments
 - Consider edge cases
 
-### Step 7: Test
+### Step 7: Test & Quality Gate
 - Run relevant tests
 - Manually verify the feature works correctly
 - Ensure no existing features are broken
+{{#VERIFY_COMMAND}}
+- **Quality Gate**: Run the project's verification command before proceeding:
+```bash
+{{VERIFY_COMMAND}}
+```
+If this command fails, fix the issues before marking the feature as passed. If you cannot fix them after 2 attempts, document the failure in claude-progress.txt and move on (leave `passes: false`).
+{{/VERIFY_COMMAND}}
 
 ### Step 8: Update the Feature List
 After tests pass, update `feature_list.json`: set the current feature's `passes` to `true` and `inProgress` to `false`.

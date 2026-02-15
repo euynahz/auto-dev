@@ -69,6 +69,7 @@ export interface CreateProjectOptions {
   useAgentTeams?: boolean
   systemPrompt?: string
   reviewBeforeCoding?: boolean
+  verifyCommand?: string
   projectDir?: string
   forceClean?: boolean
   provider?: string
@@ -83,6 +84,7 @@ export interface ImportProjectOptions {
   useAgentTeams?: boolean
   systemPrompt?: string
   reviewBeforeCoding?: boolean
+  verifyCommand?: string
   taskPrompt?: string
   provider?: string
   providerSettings?: Record<string, unknown>
@@ -91,7 +93,7 @@ export interface ImportProjectOptions {
 export function createProject(opts: CreateProjectOptions): ProjectData {
   const {
     name, spec, model = 'claude-opus-4-6', concurrency = 1,
-    useAgentTeams = false, systemPrompt, reviewBeforeCoding,
+    useAgentTeams = false, systemPrompt, reviewBeforeCoding, verifyCommand,
     projectDir, forceClean, provider = 'claude', providerSettings,
   } = opts
   const id = uuidv4()
@@ -126,6 +128,7 @@ export function createProject(opts: CreateProjectOptions): ProjectData {
     useAgentTeams,
     ...(systemPrompt ? { systemPrompt } : {}),
     ...(reviewBeforeCoding ? { reviewBeforeCoding } : {}),
+    ...(verifyCommand ? { verifyCommand } : {}),
     createdAt: now,
     updatedAt: now,
     projectDir: projectWorkDir,
@@ -147,7 +150,7 @@ export function createProject(opts: CreateProjectOptions): ProjectData {
 export function importProject(opts: ImportProjectOptions): ProjectData {
   const {
     name, dirPath, model = 'claude-opus-4-6', concurrency = 1,
-    useAgentTeams = false, systemPrompt, reviewBeforeCoding,
+    useAgentTeams = false, systemPrompt, reviewBeforeCoding, verifyCommand,
     taskPrompt, provider = 'claude', providerSettings,
   } = opts
   if (!isPathSafe(dirPath)) throw new Error('Path is not within allowed range')
@@ -221,6 +224,7 @@ export function importProject(opts: ImportProjectOptions): ProjectData {
     useAgentTeams,
     ...(systemPrompt ? { systemPrompt } : {}),
     ...(reviewBeforeCoding ? { reviewBeforeCoding } : {}),
+    ...(verifyCommand ? { verifyCommand } : {}),
     createdAt: now,
     updatedAt: now,
     projectDir: dirPath, // Point directly to user-provided path

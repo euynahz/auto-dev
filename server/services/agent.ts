@@ -180,7 +180,15 @@ function loadPrompt(name: string): string {
 
 // Agent CLI arg building has been moved to provider.buildArgs()
 
-// Build initializer prompt
+// Build architecture analysis prompt (phase 1 of initialization)
+function buildArchitecturePrompt(project: ReturnType<typeof projectService.getProject>): string {
+  if (!project) return ''
+  let template = loadPrompt('architecture')
+  template = template.replace('{{PROJECT_NAME}}', project.name)
+  return template
+}
+
+// Build initializer prompt (phase 2 — reads architecture.md)
 function buildInitializerPrompt(project: ReturnType<typeof projectService.getProject>): string {
   if (!project) return ''
   let template = loadPrompt('initializer')
@@ -199,9 +207,23 @@ function buildAppendInitializerPrompt(project: ReturnType<typeof projectService.
   return template
 }
 
+// Inject verifyCommand into prompt template (mustache-style {{#VERIFY_COMMAND}}...{{/VERIFY_COMMAND}})
+function injectVerifyCommand(template: string, verifyCommand?: string): string {
+  if (verifyCommand) {
+    template = template.replace(/\{\{#VERIFY_COMMAND\}\}/g, '')
+    template = template.replace(/\{\{\/VERIFY_COMMAND\}\}/g, '')
+    template = template.replace(/\{\{VERIFY_COMMAND\}\}/g, verifyCommand)
+  } else {
+    // Strip the entire verify block
+    template = template.replace(/\{\{#VERIFY_COMMAND\}\}[\s\S]*?\{\{\/VERIFY_COMMAND\}\}/g, '')
+  }
+  return template
+}
+
 // Build coding prompt (serial mode)
-function buildCodingPrompt(): string {
-  return loadPrompt('coding')
+function buildCodingPrompt(project?: ReturnType<typeof projectService.getProject>): string {
+  let template = loadPrompt('coding')
+  return injectVerifyCommand(template, project?.verifyCommand)
 }
 
 // Build agent-teams prompt
@@ -214,14 +236,14 @@ function buildAgentTeamsPrompt(project: ReturnType<typeof projectService.getProj
 }
 
 // Build coding-parallel prompt (parallel mode)
-function buildParallelCodingPrompt(agentIndex: number, branch: string, feature: { id: string; description: string; steps: string[] }): string {
+function buildParallelCodingPrompt(agentIndex: number, branch: string, feature: { id: string; description: string; steps: string[] }, verifyCommand?: string): string {
   let template = loadPrompt('coding-parallel')
   template = template.replace('{{AGENT_INDEX}}', String(agentIndex))
   template = template.replace('{{BRANCH_NAME}}', branch)
   template = template.replace('{{FEATURE_ID}}', feature.id)
   template = template.replace('{{FEATURE_DESCRIPTION}}', feature.description)
   template = template.replace('{{FEATURE_STEPS}}', feature.steps.map((s, i) => `${i + 1}. ${s}`).join('\n'))
-  return template
+  return injectVerifyCommand(template, verifyCommand)
 }
 
 // Create log entry
@@ -767,13 +789,17 @@ function spawnAgentSession(config: SpawnSessionConfig): void {
 }
 
 // Start a session (serial mode, used when concurrency=1)
-function startSession(projectId: string, type: 'initializer' | 'coding', agentIndex = 0) {
+function startSession(projectId: string, type: 'architecture' | 'initializer' | 'coding', agentIndex = 0) {
   const project = projectService.getProject(projectId)
   if (!project) return
 
-  const prompt = type === 'initializer'
-    ? buildInitializerPrompt(project)
-    : buildCodingPrompt()
+  const prompt = type === 'architecture'
+    ? buildArchitecturePrompt(project)
+    : type === 'initializer'
+      ? buildInitializerPrompt(project)
+      : buildCodingPrompt(project)
+
+  const typeLabel = type === 'architecture' ? 'architecture analysis' : type === 'initializer' ? 'initializer' : 'coding'
 
   spawnAgentSession({
     projectId, project,
@@ -781,12 +807,24 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
     agentIndex,
     prompt,
     maxTurns: 200,
-    startMessage: `🚀 Starting ${type === 'initializer' ? 'initializer' : 'coding'} Session...`,
+    startMessage: `🚀 Starting ${typeLabel} session...`,
     heartbeat: true,
     onClose({ wasStopped, endStatus, sessionId, agentIndex: ai }) {
       projectService.syncFeaturesFromDisk(projectId)
       const progress = projectService.getProgress(projectId)
       broadcast({ type: 'progress', projectId, progress })
+
+      // Architecture phase complete → chain to initializer phase
+      if (type === 'architecture' && !wasStopped) {
+        const archEntry = createLogEntry(sessionId, 'system', 'Architecture analysis complete, starting task decomposition in 3s...', ai)
+        projectService.addLog(projectId, archEntry)
+        broadcast({ type: 'log', projectId, entry: archEntry })
+        setTimeout(() => {
+          const proj = projectService.getProject(projectId)
+          if (proj && proj.status === 'initializing') startSession(projectId, 'initializer', 0)
+        }, SESSION_CHAIN_DELAY_MS)
+        return
+      }
 
       // State transition after initializer ends
       const currentStatus = projectService.getProject(projectId)?.status
@@ -873,7 +911,7 @@ function startParallelSession(projectId: string, agentIndex: number) {
       projectId, project,
       sessionType: 'coding',
       agentIndex,
-      prompt: buildParallelCodingPrompt(agentIndex, branch, feature),
+      prompt: buildParallelCodingPrompt(agentIndex, branch, feature, project.verifyCommand),
       maxTurns: 200,
       startMessage: `🚀 Agent ${agentIndex} starting parallel coding session — Feature: ${feature.description} — Branch: ${branch}`,
       branch,
@@ -1070,10 +1108,10 @@ export function startAgent(projectId: string) {
   if (project.useAgentTeams) {
     // If review is needed and not yet initialized, run initializer first to generate feature list
     if (project.reviewBeforeCoding && !hasInitialized) {
-      log.agent(`Agent Teams + review mode: starting initializer first to generate feature list`)
+      log.agent(`Agent Teams + review mode: starting architecture analysis first`)
       applyTransition(projectId, transition(project.status, { type: 'START', hasInitialized: false }))
       startFeatureWatcher(projectId)
-      startSession(projectId, 'initializer', 0)
+      startSession(projectId, 'architecture', 0)
       return
     }
     applyTransition(projectId, transition(project.status, { type: 'START', hasInitialized: true }))
@@ -1085,9 +1123,9 @@ export function startAgent(projectId: string) {
   startFeatureWatcher(projectId)
 
   if (!hasInitialized) {
-    log.agent(`Project not initialized, starting initializer session`)
+    log.agent(`Project not initialized, starting architecture analysis`)
     applyTransition(projectId, transition(project.status, { type: 'START', hasInitialized: false }))
-    startSession(projectId, 'initializer', 0)
+    startSession(projectId, 'architecture', 0)
     return
   }
 

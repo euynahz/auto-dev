@@ -37,6 +37,7 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
   const [concurrency, setConcurrency] = useState(1)
   const [useAgentTeams, setUseAgentTeams] = useState(false)
   const [reviewBeforeCoding, setReviewBeforeCoding] = useState(false)
+  const [verifyCommand, setVerifyCommand] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -92,6 +93,7 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
         concurrency, useAgentTeams,
         systemPrompt: systemPrompt.trim() || undefined,
         reviewBeforeCoding: reviewBeforeCoding || undefined,
+        verifyCommand: verifyCommand.trim() || undefined,
       })
       addProject(project)
       onOpenChange(false)
@@ -191,6 +193,12 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
                   <span className="text-sm font-medium">Review task list after initialization</span>
                   <span className="text-xs text-muted-foreground">— Review before coding starts</span>
                 </label>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Quality Gate Command <span className="text-xs text-muted-foreground">(optional)</span></label>
+                  <input type="text" value={verifyCommand} onChange={(e) => setVerifyCommand(e.target.value)} placeholder="e.g. npm test && npm run lint" className="w-full px-3 py-2 rounded-md bg-muted border border-border text-sm font-mono" />
+                  <p className="text-xs text-muted-foreground mt-1">Runs before marking each feature as passed</p>
+                </div>
 
                 {error && <div className="text-sm text-red-400 bg-red-400/10 rounded-md px-3 py-2">{error}</div>}
 

@@ -12,6 +12,7 @@ export interface ProjectData {
   useAgentTeams: boolean // Use Agent Teams mode (internal multi-agent coordination when provider supports it)
   systemPrompt?: string // Project-level system prompt, injected into all agents via --system-prompt
   reviewBeforeCoding?: boolean // Enter review mode after initialization, do not auto-start coding
+  verifyCommand?: string // Quality gate command (e.g. "npm test && npm run lint") run before marking feature as passed
   createdAt: string
   updatedAt: string
   projectDir: string // Project path on disk
@@ -31,7 +32,7 @@ export interface FeatureData {
 export interface SessionData {
   id: string
   projectId: string
-  type: 'initializer' | 'coding' | 'agent-teams'
+  type: 'architecture' | 'initializer' | 'coding' | 'agent-teams'
   status: 'running' | 'completed' | 'failed' | 'stopped'
   featureId?: string
   agentIndex?: number  // Agent index (0-based)

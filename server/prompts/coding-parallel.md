@@ -25,9 +25,11 @@ Confirm you are on the correct branch.
 ### Step 2: Understand the Project
 ```bash
 ls -la
+cat architecture.md
+cat .features/{{FEATURE_ID}}.md 2>/dev/null || echo "No context file"
 cat feature_list.json | head -50
 ```
-Quickly understand the project structure.
+Read the architecture document and feature context file for implementation guidance. If they don't exist, proceed based on the feature description below.
 
 ### Step 3: Implement the Feature
 Based on the feature description and steps above, write code to implement the feature.
@@ -41,9 +43,16 @@ git commit -m "chore: mark {{FEATURE_ID}} as in-progress"
 - Write clear code comments
 - Consider edge cases
 
-### Step 4: Test
+### Step 4: Test & Quality Gate
 - Run relevant tests
 - Ensure your changes don't break existing functionality
+{{#VERIFY_COMMAND}}
+- **Quality Gate**: Run the verification command before marking as passed:
+```bash
+{{VERIFY_COMMAND}}
+```
+If this fails, fix the issues. If you cannot fix after 2 attempts, leave `passes: false` and commit what you have.
+{{/VERIFY_COMMAND}}
 
 ### Step 5: Update the Feature List
 After tests pass, update `feature_list.json`: set feature `{{FEATURE_ID}}`'s `passes` to `true` and `inProgress` to `false`.
