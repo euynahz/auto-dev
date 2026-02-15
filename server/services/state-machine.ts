@@ -2,7 +2,7 @@ import type { ProjectData } from '../types.js'
 
 export type ProjectStatus = ProjectData['status']
 
-// 状态转换事件
+// State transition events
 export type StateEvent =
   | { type: 'START'; hasInitialized: boolean }
   | { type: 'INIT_COMPLETE'; hasFeatures: boolean; reviewMode: boolean }
@@ -14,13 +14,13 @@ export type StateEvent =
   | { type: 'ERROR' }
 
 export interface TransitionResult {
-  newStatus: ProjectStatus | null  // null = 不转换
+  newStatus: ProjectStatus | null  // null = no transition
   stopWatcher?: boolean
 }
 
 /**
- * 纯函数：根据当前状态和事件，返回转换结果。
- * 不产生副作用，所有 IO 由调用方处理。
+ * Pure function: given current status and event, returns transition result.
+ * No side effects — all IO is handled by the caller.
  */
 export function transition(current: ProjectStatus, event: StateEvent): TransitionResult {
   switch (event.type) {
@@ -58,13 +58,13 @@ export function transition(current: ProjectStatus, event: StateEvent): Transitio
         if (event.allDone) {
           return { newStatus: 'completed', stopWatcher: true }
         }
-        return { newStatus: null } // 继续下一个 session
+        return { newStatus: null } // continue next session
       }
       return { newStatus: null }
 
     case 'SESSION_FAILED':
       if (current === 'running' && !event.allAgentsStopped) {
-        return { newStatus: null } // 继续重试
+        return { newStatus: null } // continue retrying
       }
       return { newStatus: null }
 

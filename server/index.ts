@@ -11,13 +11,13 @@ import type { BroadcastMessage } from './types.js'
 const app = express()
 const server = createServer(app)
 
-// WebSocket 服务
+// WebSocket server
 const wss = new WebSocketServer({ server, path: '/ws' })
 
 const clients = new Set<WebSocket>()
 
 wss.on('connection', (ws, req) => {
-  // WebSocket Token 认证
+  // WebSocket token auth
   const token = process.env.AUTODEV_TOKEN
   if (token) {
     const parsed = url.parse(req.url || '', true)
@@ -31,19 +31,19 @@ wss.on('connection', (ws, req) => {
   ws.on('pong', () => { (ws as any).isAlive = true })
 
   clients.add(ws)
-  log.ws(`客户端连接，当前 ${clients.size} 个`)
+  log.ws(`Client connected, ${clients.size} total`)
 
   ws.on('close', () => {
     clients.delete(ws)
-    log.ws(`客户端断开，当前 ${clients.size} 个`)
+    log.ws(`Client disconnected, ${clients.size} total`)
   })
 })
 
-// 心跳检测：每 30 秒 ping，10 秒内无 pong 则终止
+// Heartbeat: ping every 30s, terminate if no pong within 10s
 const heartbeatInterval = setInterval(() => {
   for (const ws of clients) {
     if (!(ws as any).isAlive) {
-      log.ws('心跳超时，终止连接')
+      log.ws('Heartbeat timeout, terminating connection')
       clients.delete(ws)
       ws.terminate()
       continue
@@ -57,7 +57,7 @@ server.on('close', () => {
   clearInterval(heartbeatInterval)
 })
 
-// 广播函数
+// Broadcast function
 function broadcast(msg: BroadcastMessage) {
   const data = JSON.stringify(msg)
   for (const client of clients) {
@@ -67,29 +67,29 @@ function broadcast(msg: BroadcastMessage) {
   }
 }
 
-// 注入广播函数到 agent 服务
+// Inject broadcast function into agent service
 setBroadcast(broadcast)
 
-// 启动恢复：清理孤儿进程，重置卡住的项目状态
+// Startup recovery: clean up orphan processes, reset stuck project states
 initRecovery()
 
-// 中间件
+// Middleware
 app.use(express.json({ limit: '10mb' }))
 
-// API 路由
+// API routes
 app.use('/api', apiRouter)
 
-// 托管前端静态资源
+// Serve frontend static assets
 const publicDir = path.join(import.meta.dirname, '..', 'public')
 app.use(express.static(publicDir))
 app.get('/{*path}', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'))
 })
 
-// 启动服务
+// Start server
 const PORT = process.env.PORT || 3001
 server.listen(PORT, () => {
   const url = `http://localhost:${PORT}`
-  log.server(`AutoDev Server 运行在 ${url}`)
-  log.server(`WebSocket 监听 ws://localhost:${PORT}/ws`)
+  log.server(`AutoDev Server running at ${url}`)
+  log.server(`WebSocket listening on ws://localhost:${PORT}/ws`)
 })

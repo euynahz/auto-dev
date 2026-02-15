@@ -21,14 +21,14 @@ export const codexProvider: AgentProvider = {
   settings: [
     {
       key: 'sandbox',
-      label: '沙箱模式',
-      description: '控制 Codex 对文件系统的访问权限',
+      label: 'Sandbox mode',
+      description: 'Control Codex file system access permissions',
       type: 'select',
       default: 'danger-full-access',
       options: [
-        { value: 'read-only', label: '只读' },
-        { value: 'workspace-write', label: '工作区可写' },
-        { value: 'danger-full-access', label: '完全访问（危险）' },
+        { value: 'read-only', label: 'Read-only' },
+        { value: 'workspace-write', label: 'Workspace writable' },
+        { value: 'danger-full-access', label: 'Full access (dangerous)' },
       ],
     },
   ],

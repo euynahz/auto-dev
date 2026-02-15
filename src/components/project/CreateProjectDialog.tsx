@@ -53,10 +53,10 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
     const p = getProvider(newProvider)
     if (p?.defaultModel) setModel(p.defaultModel)
     else setModel('')
-    // 重置不兼容的选项
+    // Reset incompatible options
     if (!p?.capabilities.agentTeams) setUseAgentTeams(false)
     if (!p?.capabilities.systemPrompt) setSystemPrompt('')
-    // 重置 provider 专属设置为默认值
+    // Reset provider-specific settings to defaults
     const defaults: Record<string, unknown> = {}
     p?.settings?.forEach(s => { defaults[s.key] = s.default })
     setProviderSettings(defaults)
@@ -98,7 +98,7 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
       resetForm()
       navigate(`/project/${project.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败')
+      setError(err instanceof Error ? err.message : 'Creation failed')
     } finally {
       setLoading(false)
     }
@@ -117,7 +117,7 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
           setLoading(false)
           return
         }
-      } catch { /* 目录不存在，可以直接创建 */ }
+      } catch { /* Directory doesn't exist, safe to create */ }
       setLoading(false)
     }
     doCreate()
@@ -137,14 +137,14 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div>
-              <DialogTitle>新建项目</DialogTitle>
-              <DialogDescription>描述你想要构建的应用，AI Agent 将自动完成开发</DialogDescription>
+              <DialogTitle>Create Project</DialogTitle>
+              <DialogDescription>Describe the app you want to build. The AI Agent will handle the development automatically.</DialogDescription>
             </div>
             <div className="flex items-center gap-1 bg-secondary/50 rounded-lg p-0.5 mr-6">
-              <button onClick={() => setLayout('vertical')} className={cn('p-1.5 rounded-md transition-colors cursor-pointer', layout === 'vertical' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')} title="竖向布局">
+              <button onClick={() => setLayout('vertical')} className={cn('p-1.5 rounded-md transition-colors cursor-pointer', layout === 'vertical' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')} title="Vertical Layout">
                 <Rows3 className="h-3.5 w-3.5" />
               </button>
-              <button onClick={() => setLayout('horizontal')} className={cn('p-1.5 rounded-md transition-colors cursor-pointer', layout === 'horizontal' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')} title="横向布局">
+              <button onClick={() => setLayout('horizontal')} className={cn('p-1.5 rounded-md transition-colors cursor-pointer', layout === 'horizontal' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')} title="Horizontal Layout">
                 <Columns3 className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -156,9 +156,9 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
             <div className="flex items-start gap-3 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
               <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
               <div className="space-y-2">
-                <p className="text-sm font-medium">目录已有内容</p>
+                <p className="text-sm font-medium">Directory is not empty</p>
                 <p className="text-sm text-muted-foreground">
-                  <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">{dirPath}</code> 下已存在以下文件：
+                  <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">{dirPath}</code> already contains the following files:
                 </p>
                 <div className="text-xs text-muted-foreground font-mono bg-secondary/50 rounded p-2 max-h-32 overflow-y-auto">
                   {dirConflict.entries.map((e) => <div key={e}>{e}</div>)}
@@ -166,9 +166,9 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDirConflict(null)} className="cursor-pointer">返回修改</Button>
-              <Button variant="outline" onClick={() => { setDirConflict(null); doCreate(false) }} className="cursor-pointer">保留内容，直接创建</Button>
-              <Button variant="destructive" onClick={() => { setDirConflict(null); doCreate(true) }} className="cursor-pointer">清空目录后创建</Button>
+              <Button variant="outline" onClick={() => setDirConflict(null)} className="cursor-pointer">Go Back</Button>
+              <Button variant="outline" onClick={() => { setDirConflict(null); doCreate(false) }} className="cursor-pointer">Keep Files & Create</Button>
+              <Button variant="destructive" onClick={() => { setDirConflict(null); doCreate(true) }} className="cursor-pointer">Clear Directory & Create</Button>
             </div>
           </div>
         ) : (
@@ -176,20 +176,20 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
             <div className={cn(isHorizontal ? 'flex gap-6' : 'space-y-4', 'py-4')}>
               <div className={cn(isHorizontal ? 'w-1/2 space-y-4' : 'space-y-4')}>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">项目目录</label>
-                  <Input placeholder="例如：/home/user/projects/my-app（留空则自动生成）" value={dirPath} onChange={(e) => handleDirPathChange(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Agent 将在此目录下工作，留空则在 workspace/ 下自动创建</p>
+                  <label className="text-sm font-medium">Project Directory</label>
+                  <Input placeholder="e.g. /home/user/projects/my-app (leave empty to auto-generate)" value={dirPath} onChange={(e) => handleDirPathChange(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">The Agent will work in this directory. Leave empty to auto-create under workspace/.</p>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">项目名称</label>
-                  <Input placeholder="例如：todo-app" value={name} onChange={(e) => handleNameChange(e.target.value)} />
+                  <label className="text-sm font-medium">Project Name</label>
+                  <Input placeholder="e.g. todo-app" value={name} onChange={(e) => handleNameChange(e.target.value)} />
                 </div>
 
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={reviewBeforeCoding} onChange={(e) => setReviewBeforeCoding(e.target.checked)} className="accent-primary" />
-                  <span className="text-sm font-medium">初始化后审查任务列表</span>
-                  <span className="text-xs text-muted-foreground">— 生成后先审查再编码</span>
+                  <span className="text-sm font-medium">Review task list after initialization</span>
+                  <span className="text-xs text-muted-foreground">— Review before coding starts</span>
                 </label>
 
                 {error && <div className="text-sm text-red-400 bg-red-400/10 rounded-md px-3 py-2">{error}</div>}
@@ -197,13 +197,13 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
                 {!isHorizontal && (
                   <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                     <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', !showAdvanced && '-rotate-90')} />
-                    高级选项
+                    Advanced Options
                   </button>
                 )}
 
                 {(showAdvanced || isHorizontal) && (
                   <div className={cn('space-y-3', !isHorizontal && 'pl-4 border-l-2 border-border')}>
-                    {/* Provider 选择 */}
+                    {/* Provider selection */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">AI Provider</label>
                       <select value={provider} onChange={(e) => handleProviderChange(e.target.value)} className={selectClass}>
@@ -211,49 +211,49 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
                       </select>
                     </div>
 
-                    {/* 模型 — 仅 modelSelection 能力 */}
+                    {/* Model — only with modelSelection capability */}
                     {caps?.modelSelection && (
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">模型</label>
-                        <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={currentProvider?.defaultModel || '默认模型'} />
+                        <label className="text-sm font-medium">Model</label>
+                        <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={currentProvider?.defaultModel || 'Default model'} />
                       </div>
                     )}
 
-                    {/* 并发 */}
+                    {/* Concurrency */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
-                        {useAgentTeams ? '建议的并行 Agent 数量' : '并发 Agent 数量'}
+                        {useAgentTeams ? 'Suggested Parallel Agent Count' : 'Concurrent Agent Count'}
                       </label>
                       <div className="flex items-center gap-3">
                         <input type="range" min={1} max={8} value={concurrency} onChange={(e) => setConcurrency(Number(e.target.value))} className="flex-1 accent-primary" />
                         <span className="text-sm font-mono w-6 text-center">{concurrency}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {useAgentTeams ? 'Agent Teams 模式下，AI 将自主决定实际并行数量' : '多个 Agent 将在独立 git 分支上并行开发不同 feature'}
+                        {useAgentTeams ? 'In Agent Teams mode, the AI will autonomously decide the actual parallelism' : 'Multiple Agents will develop different features in parallel on separate git branches'}
                       </p>
                     </div>
 
-                    {/* Agent Teams — 仅 agentTeams 能力 */}
+                    {/* Agent Teams — only with agentTeams capability */}
                     {caps?.agentTeams && (
                       <div className="space-y-2">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input type="checkbox" checked={useAgentTeams} onChange={(e) => setUseAgentTeams(e.target.checked)} className="accent-primary" />
-                          <span className="text-sm font-medium">Agent Teams 模式</span>
+                          <span className="text-sm font-medium">Agent Teams Mode</span>
                         </label>
-                        <p className="text-xs text-muted-foreground">启用后，系统只启动一个 AI 会话，由 AI 内部自主协调多个子 Agent 完成全流程开发</p>
+                        <p className="text-xs text-muted-foreground">When enabled, the system launches a single AI session that internally coordinates multiple sub-Agents for end-to-end development</p>
                       </div>
                     )}
 
-                    {/* 系统提示词 — 仅 systemPrompt 能力 */}
+                    {/* System Prompt — only with systemPrompt capability */}
                     {caps?.systemPrompt && (
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">系统提示词（可选）</label>
-                        <Textarea placeholder="对所有 Agent 生效的额外指令，如编码规范、技术栈偏好等..." value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={3} className="resize-none" />
-                        <p className="text-xs text-muted-foreground">通过 --system-prompt 注入，所有 Agent Session 均生效</p>
+                        <label className="text-sm font-medium">System Prompt (optional)</label>
+                        <Textarea placeholder="Additional instructions for all Agents, e.g. coding standards, tech stack preferences..." value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={3} className="resize-none" />
+                        <p className="text-xs text-muted-foreground">Injected via --system-prompt, applies to all Agent sessions</p>
                       </div>
                     )}
 
-                    {/* Provider 专属设置 */}
+                    {/* Provider-specific settings */}
                     {currentProvider?.settings && currentProvider.settings.length > 0 && (
                       <ProviderSettings settings={currentProvider.settings} values={providerSettings} onChange={handleProviderSettingChange} />
                     )}
@@ -262,17 +262,17 @@ export function CreateProjectDialog({ open, onOpenChange }: Props) {
               </div>
 
               <div className={cn(isHorizontal ? 'w-1/2' : '', 'space-y-2')}>
-                <label className="text-sm font-medium">项目需求描述</label>
-                <Textarea placeholder="详细描述你想要构建的应用，包括功能、技术栈、UI 风格等..." value={spec} onChange={(e) => setSpec(e.target.value)} rows={isHorizontal ? 14 : 8} className="resize-none" />
-                <p className="text-xs text-muted-foreground">支持 Markdown 格式，描述越详细效果越好</p>
+                <label className="text-sm font-medium">Project Specification</label>
+                <Textarea placeholder="Describe the app you want to build in detail, including features, tech stack, UI style, etc." value={spec} onChange={(e) => setSpec(e.target.value)} rows={isHorizontal ? 14 : 8} className="resize-none" />
+                <p className="text-xs text-muted-foreground">Supports Markdown format. The more detailed, the better the results.</p>
               </div>
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)} className="cursor-pointer">取消</Button>
+              <Button variant="outline" onClick={() => onOpenChange(false)} className="cursor-pointer">Cancel</Button>
               <Button onClick={handleCreate} disabled={loading || !name.trim() || !spec.trim()} className="cursor-pointer">
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                创建项目
+                Create Project
               </Button>
             </DialogFooter>
           </>

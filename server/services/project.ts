@@ -5,11 +5,11 @@ import { v4 as uuidv4 } from 'uuid'
 import { log } from '../lib/logger.js'
 import type { ProjectData, FeatureData, SessionData, LogEntryData, HelpRequestData } from '../types.js'
 
-// 数据存储目录
+// Data storage directory
 const DATA_DIR = path.join(process.cwd(), '.autodev-data')
 const PROJECTS_DIR = path.join(DATA_DIR, 'projects')
 
-// 确保目录存在
+// Ensure directory exists
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
@@ -19,7 +19,7 @@ function ensureDir(dir: string) {
 ensureDir(DATA_DIR)
 ensureDir(PROJECTS_DIR)
 
-// ===== 路径沙箱 =====
+// ===== Path sandbox =====
 
 export function isPathSafe(targetPath: string): boolean {
   const resolved = path.resolve(targetPath)
@@ -30,7 +30,7 @@ export function isPathSafe(targetPath: string): boolean {
     || resolved.startsWith(cwd + path.sep) || resolved === cwd
 }
 
-// ===== 项目管理 =====
+// ===== Project management =====
 
 function getProjectDir(id: string) {
   return path.join(PROJECTS_DIR, id)
@@ -49,9 +49,9 @@ function writeJson(filePath: string, data: unknown) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
 }
 
-// 检查目录是否存在且有内容
+// Check if directory exists and has content
 export function checkDir(dirPath: string): { exists: boolean; hasContent: boolean; entries: string[] } {
-  if (!isPathSafe(dirPath)) throw new Error('路径不在允许范围内')
+  if (!isPathSafe(dirPath)) throw new Error('Path is not within allowed range')
   if (!fs.existsSync(dirPath)) return { exists: false, hasContent: false, entries: [] }
   const stat = fs.statSync(dirPath)
   if (!stat.isDirectory()) return { exists: false, hasContent: false, entries: [] }
@@ -59,8 +59,8 @@ export function checkDir(dirPath: string): { exists: boolean; hasContent: boolea
   return { exists: true, hasContent: entries.length > 0, entries: entries.slice(0, 20) }
 }
 
-// 创建项目
-// ===== 项目创建/导入选项 =====
+// Create project
+// ===== Project creation/import options =====
 export interface CreateProjectOptions {
   name: string
   spec: string
@@ -97,21 +97,21 @@ export function createProject(opts: CreateProjectOptions): ProjectData {
   const id = uuidv4()
   const now = new Date().toISOString()
 
-  // 使用用户指定的目录，或自动生成
+  // Use user-specified directory, or auto-generate
   const projectWorkDir = projectDir || path.join(process.cwd(), 'workspace', name.replace(/[^a-zA-Z0-9_-]/g, '_'))
 
-  // 如果目录已有内容且用户选择清理
+  // If directory has content and user chose to clean
   if (forceClean && fs.existsSync(projectWorkDir)) {
     const entries = fs.readdirSync(projectWorkDir).filter((e) => !e.startsWith('.'))
     for (const entry of entries) {
       fs.rmSync(path.join(projectWorkDir, entry), { recursive: true, force: true })
     }
-    log.project(`已清理目录: ${projectWorkDir}`)
+    log.project(`Cleaned directory: ${projectWorkDir}`)
   }
 
   ensureDir(projectWorkDir)
 
-  // 写入 app_spec.txt
+  // Write app_spec.txt
   fs.writeFileSync(path.join(projectWorkDir, 'app_spec.txt'), spec)
 
   const project: ProjectData = {
@@ -131,62 +131,62 @@ export function createProject(opts: CreateProjectOptions): ProjectData {
     projectDir: projectWorkDir,
   }
 
-  // 保存项目元数据
+  // Save project metadata
   const projDataDir = getProjectDir(id)
   ensureDir(projDataDir)
   writeJson(path.join(projDataDir, 'project.json'), project)
   writeJson(path.join(projDataDir, 'features.json'), [])
   writeJson(path.join(projDataDir, 'sessions.json'), [])
-  // logs.jsonl 由 addLog 按需创建（append-only）
+  // logs.jsonl created on demand by addLog (append-only)
 
-  log.project(`创建项目: ${name} (id=${id}, dir=${projectWorkDir}, agentTeams=${useAgentTeams})`)
+  log.project(`Created project: ${name} (id=${id}, dir=${projectWorkDir}, agentTeams=${useAgentTeams})`)
   return project
 }
 
-// 导入已有项目
+// Import existing project
 export function importProject(opts: ImportProjectOptions): ProjectData {
   const {
     name, dirPath, model = 'claude-opus-4-6', concurrency = 1,
     useAgentTeams = false, systemPrompt, reviewBeforeCoding,
     taskPrompt, provider = 'claude', providerSettings,
   } = opts
-  if (!isPathSafe(dirPath)) throw new Error('路径不在允许范围内')
-  // 验证目录存在
+  if (!isPathSafe(dirPath)) throw new Error('Path is not within allowed range')
+  // Verify directory exists
   if (!fs.existsSync(dirPath)) {
-    throw new Error(`目录不存在: ${dirPath}`)
+    throw new Error(`Directory not found: ${dirPath}`)
   }
   const stat = fs.statSync(dirPath)
   if (!stat.isDirectory()) {
-    throw new Error(`路径不是目录: ${dirPath}`)
+    throw new Error(`Path is not a directory: ${dirPath}`)
   }
 
-  // 扫描目录结构，拼接 spec
+  // Scan directory structure, build spec
   const specParts: string[] = []
-  specParts.push(`# 项目: ${name}`)
-  specParts.push(`\n目录: ${dirPath}\n`)
+  specParts.push(`# Project: ${name}`)
+  specParts.push(`\nDirectory: ${dirPath}\n`)
 
-  // 读取 README.md
+  // Read README.md
   const readmePath = path.join(dirPath, 'README.md')
   if (fs.existsSync(readmePath)) {
     const content = fs.readFileSync(readmePath, 'utf-8').slice(0, 5000)
     specParts.push(`## README.md\n\n${content}\n`)
   }
 
-  // 读取 CLAUDE.md
+  // Read CLAUDE.md
   const claudePath = path.join(dirPath, 'CLAUDE.md')
   if (fs.existsSync(claudePath)) {
     const content = fs.readFileSync(claudePath, 'utf-8').slice(0, 3000)
     specParts.push(`## CLAUDE.md\n\n${content}\n`)
   }
 
-  // 读取 package.json
+  // Read package.json
   const pkgPath = path.join(dirPath, 'package.json')
   if (fs.existsSync(pkgPath)) {
     const content = fs.readFileSync(pkgPath, 'utf-8').slice(0, 3000)
     specParts.push(`## package.json\n\n\`\`\`json\n${content}\n\`\`\`\n`)
   }
 
-  // 读取 docs/*.md
+  // Read docs/*.md
   const docsDir = path.join(dirPath, 'docs')
   if (fs.existsSync(docsDir) && fs.statSync(docsDir).isDirectory()) {
     const docFiles = fs.readdirSync(docsDir).filter((f) => f.endsWith('.md')).slice(0, 10)
@@ -196,14 +196,14 @@ export function importProject(opts: ImportProjectOptions): ProjectData {
     }
   }
 
-  // 扫描目录结构（排除 node_modules 等）
+  // Scan directory structure (excluding node_modules etc.)
   const tree = scanDirTree(dirPath, 3)
-  specParts.push(`## 目录结构\n\n\`\`\`\n${tree}\n\`\`\`\n`)
+  specParts.push(`## Directory Structure\n\n\`\`\`\n${tree}\n\`\`\`\n`)
 
-  // 如果用户提供了任务提示词，放在最前面让 AI 了解目标
+  // If user provided task prompt, put it first so AI understands the goal
   const autoSpec = specParts.join('\n')
   const spec = taskPrompt?.trim()
-    ? `# 任务目标\n\n${taskPrompt.trim()}\n\n---\n\n${autoSpec}`
+    ? `# Task Objective\n\n${taskPrompt.trim()}\n\n---\n\n${autoSpec}`
     : autoSpec
 
   const id = uuidv4()
@@ -223,29 +223,29 @@ export function importProject(opts: ImportProjectOptions): ProjectData {
     ...(reviewBeforeCoding ? { reviewBeforeCoding } : {}),
     createdAt: now,
     updatedAt: now,
-    projectDir: dirPath, // 直接指向用户提供的路径
+    projectDir: dirPath, // Point directly to user-provided path
   }
 
-  // 保存项目元数据
+  // Save project metadata
   const projDataDir = getProjectDir(id)
   ensureDir(projDataDir)
   writeJson(path.join(projDataDir, 'project.json'), project)
   writeJson(path.join(projDataDir, 'features.json'), [])
   writeJson(path.join(projDataDir, 'sessions.json'), [])
-  // logs.jsonl 由 addLog 按需创建（append-only）
+  // logs.jsonl created on demand by addLog (append-only)
 
-  // 自动生成 app_spec.txt（导入的项目通常没有这个文件，initializer 需要它）
+  // Auto-generate app_spec.txt (imported projects usually don't have this, initializer needs it)
   const specPath = path.join(dirPath, 'app_spec.txt')
   if (!fs.existsSync(specPath)) {
     fs.writeFileSync(specPath, spec)
-    log.project(`自动生成 app_spec.txt: ${specPath}`)
+    log.project(`Auto-generated app_spec.txt: ${specPath}`)
   }
 
-  log.project(`导入项目: ${name} (id=${id}, dir=${dirPath})`)
+  log.project(`Imported project: ${name} (id=${id}, dir=${dirPath})`)
   return project
 }
 
-// 扫描目录树（简化版）
+// Scan directory tree (simplified)
 function scanDirTree(dirPath: string, maxDepth: number, prefix = '', depth = 0): string {
   if (depth >= maxDepth) return ''
   const ignoreList = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.venv', 'venv', '.autodev-data'])
@@ -259,7 +259,7 @@ function scanDirTree(dirPath: string, maxDepth: number, prefix = '', depth = 0):
         if (!a.isDirectory() && b.isDirectory()) return 1
         return a.name.localeCompare(b.name)
       })
-      .slice(0, 30) // 限制每层最多 30 个条目
+      .slice(0, 30) // Limit to 30 entries per level
 
     for (const entry of entries) {
       if (entry.isDirectory()) {
@@ -271,13 +271,13 @@ function scanDirTree(dirPath: string, maxDepth: number, prefix = '', depth = 0):
       }
     }
   } catch {
-    // 权限问题等，忽略
+    // Ignore permission issues etc.
   }
 
   return lines.join('\n')
 }
 
-// 获取所有项目
+// Get all projects
 export function getAllProjects(): ProjectData[] {
   ensureDir(PROJECTS_DIR)
   const dirs = fs.readdirSync(PROJECTS_DIR)
@@ -287,12 +287,12 @@ export function getAllProjects(): ProjectData[] {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }
 
-// 获取单个项目
+// Get single project
 export function getProject(id: string): ProjectData | null {
   return readJson<ProjectData | null>(path.join(getProjectDir(id), 'project.json'), null)
 }
 
-// 更新项目
+// Update project
 export function updateProject(id: string, updates: Partial<ProjectData>): ProjectData | null {
   const project = getProject(id)
   if (!project) return null
@@ -301,16 +301,16 @@ export function updateProject(id: string, updates: Partial<ProjectData>): Projec
   return updated
 }
 
-// 删除项目
+// Delete project
 export function deleteProject(id: string): boolean {
   const projDataDir = getProjectDir(id)
   if (!fs.existsSync(projDataDir)) return false
   fs.rmSync(projDataDir, { recursive: true, force: true })
-  log.project(`删除项目: ${id}`)
+  log.project(`Deleted project: ${id}`)
   return true
 }
 
-// ===== Feature 管理 =====
+// ===== Feature management =====
 
 export function getFeatures(projectId: string): FeatureData[] {
   return readJson<FeatureData[]>(path.join(getProjectDir(projectId), 'features.json'), [])
@@ -329,7 +329,7 @@ export function updateFeature(projectId: string, featureId: string, passes: bool
   return feature
 }
 
-// 标记 feature 尝试失败
+// Mark feature attempt as failed
 export function markFeatureAttempt(projectId: string, featureId: string): void {
   const project = getProject(projectId)
   if (!project) return
@@ -352,10 +352,10 @@ export function markFeatureAttempt(projectId: string, featureId: string): void {
       }
     }
   } catch {
-    log.warn(`markFeatureAttempt 失败 (${projectId}, ${featureId})`)
+    log.warn(`markFeatureAttempt failed (${projectId}, ${featureId})`)
   }
 
-  // 同步到内部 features.json
+  // Sync to internal features.json
   const features = getFeatures(projectId)
   const f = features.find((feat) => feat.id === featureId)
   if (f) {
@@ -365,7 +365,7 @@ export function markFeatureAttempt(projectId: string, featureId: string): void {
   }
 }
 
-// 系统级设置 feature inProgress 状态
+// Set feature inProgress status at system level
 export function setFeatureInProgress(projectId: string, featureId: string, inProgress: boolean): void {
   const project = getProject(projectId)
   if (!project) return
@@ -387,10 +387,10 @@ export function setFeatureInProgress(projectId: string, featureId: string, inPro
       }
     }
   } catch {
-    log.warn(`setFeatureInProgress 失败 (${projectId}, ${featureId})`)
+    log.warn(`setFeatureInProgress failed (${projectId}, ${featureId})`)
   }
 
-  // 同步到内部 features.json
+  // Sync to internal features.json
   const features = getFeatures(projectId)
   const f = features.find((feat) => feat.id === featureId)
   if (f) {
@@ -399,7 +399,7 @@ export function setFeatureInProgress(projectId: string, featureId: string, inPro
   }
 }
 
-// claimedFeatures 持久化
+// claimedFeatures persistence
 export function getClaimedFeaturesData(projectId: string): Record<string, number> {
   const filePath = path.join(getProjectDir(projectId), 'claimed.json')
   return readJson<Record<string, number>>(filePath, {})
@@ -410,7 +410,7 @@ export function saveClaimedFeaturesData(projectId: string, data: Record<string, 
   writeJson(filePath, data)
 }
 
-// 从项目工作目录同步 feature_list.json
+// Sync feature_list.json from project working directory
 export function syncFeaturesFromDisk(projectId: string): FeatureData[] {
   const project = getProject(projectId)
   if (!project) return []
@@ -420,7 +420,7 @@ export function syncFeaturesFromDisk(projectId: string): FeatureData[] {
 
   try {
     const raw = JSON.parse(fs.readFileSync(featureListPath, 'utf-8'))
-    // feature_list.json 可能是数组或 { features: [...] }
+    // feature_list.json may be an array or { features: [...] }
     const list: Array<Record<string, unknown>> = Array.isArray(raw) ? raw : (raw as Record<string, unknown>).features as Array<Record<string, unknown>> || []
     const features: FeatureData[] = list.map((f, i) => ({
       id: (f.id as string) || `feature-${i}`,
@@ -433,16 +433,16 @@ export function syncFeaturesFromDisk(projectId: string): FeatureData[] {
       ...((f.lastAttemptAt as string) ? { lastAttemptAt: f.lastAttemptAt as string } : {}),
     }))
     const passed = features.filter((f) => f.passes).length
-    log.project(`同步 features (${projectId}): ${features.length} 个, ${passed} 通过`)
+    log.project(`Synced features (${projectId}): ${features.length} total, ${passed} passed`)
     setFeatures(projectId, features)
     return features
   } catch {
-    log.warn(`同步 features 失败 (${projectId}): 解析 feature_list.json 出错`)
+    log.warn(`Failed to sync features (${projectId}): error parsing feature_list.json`)
     return getFeatures(projectId)
   }
 }
 
-// ===== Session 管理 =====
+// ===== Session management =====
 
 export function getSessions(projectId: string): SessionData[] {
   return readJson<SessionData[]>(path.join(getProjectDir(projectId), 'sessions.json'), [])
@@ -463,26 +463,26 @@ export function updateSession(projectId: string, sessionId: string, updates: Par
   }
 }
 
-// ===== 日志管理（JSONL append-only） =====
+// ===== Log management (JSONL append-only) =====
 
 const LOG_MAX_ENTRIES = 5000
 
-/** 获取 .jsonl 日志文件路径 */
+/** Get .jsonl log file path */
 function getLogFilePath(projectId: string): string {
   return path.join(getProjectDir(projectId), 'logs.jsonl')
 }
 
-/** 获取旧版 .json 日志文件路径 */
+/** Get legacy .json log file path */
 function getLegacyLogFilePath(projectId: string): string {
   return path.join(getProjectDir(projectId), 'logs.json')
 }
 
-/** 如果旧的 logs.json 存在，迁移为 logs.jsonl */
+/** Migrate legacy logs.json to logs.jsonl if it exists */
 function migrateLogsIfNeeded(projectId: string): void {
   const legacyPath = getLegacyLogFilePath(projectId)
   const jsonlPath = getLogFilePath(projectId)
   if (!fs.existsSync(legacyPath)) return
-  // 如果 jsonl 已存在，只删除旧文件
+  // If jsonl already exists, just delete the old file
   if (fs.existsSync(jsonlPath)) {
     fs.unlinkSync(legacyPath)
     return
@@ -494,9 +494,9 @@ function migrateLogsIfNeeded(projectId: string): void {
       fs.writeFileSync(jsonlPath, lines.join('\n') + '\n')
     }
     fs.unlinkSync(legacyPath)
-    log.project(`已迁移 logs.json → logs.jsonl (project=${projectId})`)
+    log.project(`Migrated logs.json → logs.jsonl (project=${projectId})`)
   } catch {
-    // 迁移失败不阻塞，删除旧文件继续
+    // Migration failure is non-blocking, delete old file and continue
     try { fs.unlinkSync(legacyPath) } catch { /* ignore */ }
   }
 }
@@ -512,7 +512,7 @@ export function getLogs(projectId: string): LogEntryData[] {
     for (const line of lines) {
       try { entries.push(JSON.parse(line)) } catch { /* skip malformed lines */ }
     }
-    // 如果超出上限，截断文件并返回最后 N 条
+    // If over limit, truncate file and return last N entries
     if (entries.length > LOG_MAX_ENTRIES) {
       const trimmed = entries.slice(-LOG_MAX_ENTRIES)
       const trimmedLines = trimmed.map((e) => JSON.stringify(e))
@@ -532,7 +532,7 @@ export function addLog(projectId: string, entry: LogEntryData) {
   fs.appendFileSync(filePath, JSON.stringify(entry) + '\n')
 }
 
-// 计算进度
+// Calculate progress
 export function getProgress(projectId: string) {
   const features = getFeatures(projectId)
   const total = features.length
@@ -544,7 +544,7 @@ export function getProgress(projectId: string) {
   }
 }
 
-// ===== 人工协助请求 =====
+// ===== Human help requests =====
 
 export function getHelpRequests(projectId: string): HelpRequestData[] {
   return readJson<HelpRequestData[]>(path.join(getProjectDir(projectId), 'help-requests.json'), [])
@@ -565,7 +565,7 @@ export function resolveHelpRequest(projectId: string, requestId: string, respons
   req.resolvedAt = new Date().toISOString()
   writeJson(path.join(getProjectDir(projectId), 'help-requests.json'), requests)
 
-  // 将回复写入项目目录，供 Agent 读取
+  // Write response to project directory for agent to read
   const project = getProject(projectId)
   if (project) {
     const responsePath = path.join(project.projectDir, '.human-response.md')
@@ -574,23 +574,23 @@ export function resolveHelpRequest(projectId: string, requestId: string, respons
       '',
     ]
 
-    // 上下文：正在做什么
+    // Context: what's being worked on
     if (req.featureId || req.featureDescription) {
-      lines.push(`## 当前任务`)
+      lines.push(`## Current Task`)
       if (req.featureId) lines.push(`- Feature ID: ${req.featureId}`)
-      if (req.featureDescription) lines.push(`- 描述: ${req.featureDescription}`)
+      if (req.featureDescription) lines.push(`- Description: ${req.featureDescription}`)
       lines.push('')
     }
 
-    // 遇到的问题
-    lines.push(`## 遇到的问题`)
+    // Problem encountered
+    lines.push(`## Problem Encountered`)
     lines.push('')
     lines.push(req.message)
     lines.push('')
 
-    // 最近的操作记录
+    // Recent operation logs
     if (req.recentLogs && req.recentLogs.length > 0) {
-      lines.push(`## 最近操作记录`)
+      lines.push(`## Recent Operation Logs`)
       lines.push('')
       for (const logLine of req.recentLogs) {
         lines.push(`- ${logLine}`)
@@ -598,14 +598,14 @@ export function resolveHelpRequest(projectId: string, requestId: string, respons
       lines.push('')
     }
 
-    // 人工回复
-    lines.push(`## 人工指导`)
+    // Human response
+    lines.push(`## Human Guidance`)
     lines.push('')
     lines.push(response)
     lines.push('')
 
     fs.writeFileSync(responsePath, lines.join('\n'))
-    log.project(`人工回复已写入: ${responsePath}`)
+    log.project(`Human response written to: ${responsePath}`)
   }
 
   return req

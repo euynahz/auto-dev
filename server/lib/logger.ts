@@ -10,7 +10,7 @@ const green = '\x1b[32m'
 const magenta = '\x1b[35m'
 
 function ts(): string {
-  return gray + new Date().toLocaleTimeString('zh-CN', { hour12: false }) + reset
+  return gray + new Date().toLocaleTimeString('en-US', { hour12: false }) + reset
 }
 
 function tag(label: string, color: string): string {

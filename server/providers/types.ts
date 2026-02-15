@@ -1,44 +1,44 @@
-// ===== AI Agent Provider 抽象层 =====
+// ===== AI Agent Provider Abstraction Layer =====
 
-/** Session 上下文，传给 provider 构建参数 */
+/** Session context, passed to provider to build args */
 export interface SessionContext {
   prompt: string
   model: string
   maxTurns: number
   systemPrompt?: string
   projectDir: string
-  dangerousMode?: boolean    // 跳过权限确认
+  dangerousMode?: boolean    // Skip permission confirmation
   disableSlashCommands?: boolean
   verbose?: boolean
-  /** Provider 专属设置（来自项目配置） */
+  /** Provider-specific settings (from project config) */
   providerSettings?: Record<string, unknown>
 }
 
-/** Provider 能力声明 */
+/** Provider capability declaration */
 export interface ProviderCapabilities {
-  streaming: boolean          // 支持流式 JSON 输出
-  maxTurns: boolean           // 支持限制轮次
-  systemPrompt: boolean       // 支持注入系统提示
-  agentTeams: boolean         // 支持内置多 agent 协调
-  modelSelection: boolean     // 支持指定模型
-  dangerousMode: boolean      // 支持跳过权限确认
+  streaming: boolean          // Supports streaming JSON output
+  maxTurns: boolean           // Supports limiting turns
+  systemPrompt: boolean       // Supports injecting system prompt
+  agentTeams: boolean         // Supports built-in multi-agent coordination
+  modelSelection: boolean     // Supports model selection
+  dangerousMode: boolean      // Supports skipping permission confirmation
 }
 
-/** Provider 专属设置项 schema — 前端据此动态渲染控件 */
+/** Provider-specific setting schema — frontend renders controls based on this */
 export interface ProviderSetting {
   key: string
   label: string
   description?: string
   type: 'boolean' | 'string' | 'select' | 'number'
   default: unknown
-  /** type='select' 时的选项列表 */
+  /** Options list for type='select' */
   options?: Array<{ value: string; label: string }>
-  /** type='number' 时的范围 */
+  /** Range for type='number' */
   min?: number
   max?: number
 }
 
-/** 标准化输出事件 — 所有 provider 的 stdout 都转成这个 */
+/** Standardized output event — all provider stdout is converted to this */
 export type AgentEvent =
   | { type: 'text'; content: string }
   | { type: 'thinking'; content: string }
@@ -48,38 +48,38 @@ export type AgentEvent =
   | { type: 'error'; content: string }
   | { type: 'ignore' }
 
-/** AI Agent Provider 接口 */
+/** AI Agent Provider interface */
 export interface AgentProvider {
-  /** Provider 唯一标识 */
+  /** Provider unique identifier */
   name: string
 
-  /** 显示名称 */
+  /** Display name */
   displayName: string
 
-  /** CLI 可执行文件名 */
+  /** CLI binary name */
   binary: string
 
-  /** 默认模型名（前端 placeholder 用） */
+  /** Default model name (for frontend placeholder) */
   defaultModel?: string
 
-  /** 能力声明 */
+  /** Capability declaration */
   capabilities: ProviderCapabilities
 
-  /** Provider 专属设置 schema */
+  /** Provider-specific settings schema */
   settings?: ProviderSetting[]
 
-  /** 构建 CLI 启动参数 */
+  /** Build CLI launch arguments */
   buildArgs(ctx: SessionContext): string[]
 
-  /** 构建额外环境变量（可选） */
+  /** Build extra environment variables (optional) */
   buildEnv?(ctx: SessionContext): Record<string, string>
 
-  /** 解析 stdout 的一行输出 → 标准化事件 */
+  /** Parse one line of stdout → standardized event */
   parseLine(line: string): AgentEvent | null
 
-  /** 判断进程退出码是否表示成功 */
+  /** Check if process exit code indicates success */
   isSuccessExit(code: number): boolean
 
-  /** 判断一行输出是否为噪音（应跳过） */
+  /** Check if a line of output is noise (should be skipped) */
   isNoiseLine?(line: string): boolean
 }

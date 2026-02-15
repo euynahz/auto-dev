@@ -11,7 +11,7 @@ interface Props {
   projectName: string
 }
 
-// 发送浏览器桌面通知
+// Send browser desktop notification
 function sendDesktopNotification(title: string, body: string) {
   if (!('Notification' in window)) return
   if (Notification.permission === 'granted') {
@@ -33,21 +33,21 @@ export function HelpDialog({ projectId, projectName }: Props) {
   const [notifiedIds, setNotifiedIds] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(true)
 
-  // 当前待处理的请求（取第一个）
+  // Current pending request (first one)
   const current: HelpRequest | undefined = helpRequests[0]
 
-  // 请求通知权限（页面加载时）
+  // Request notification permission (on page load)
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
   }, [])
 
-  // 新请求到达时发送桌面通知 & 自动弹出
+  // Send desktop notification & auto-open when new request arrives
   useEffect(() => {
     if (!current || notifiedIds.has(current.id)) return
     sendDesktopNotification(
-      `Agent 需要帮助 — ${projectName}`,
+      `Agent Needs Help — ${projectName}`,
       current.message.slice(0, 120)
     )
     setNotifiedIds((prev) => new Set(prev).add(current.id))
@@ -62,7 +62,7 @@ export function HelpDialog({ projectId, projectName }: Props) {
       resolveHelpRequest(projectId, current.id)
       setResponse('')
     } catch (err) {
-      console.error('提交回复失败:', err)
+      console.error('Submit response failed:', err)
     } finally {
       setSubmitting(false)
     }
@@ -77,7 +77,7 @@ export function HelpDialog({ projectId, projectName }: Props) {
 
   if (!current) return null
 
-  // Dialog 已关闭时，显示浮动角标
+  // Show floating badge when dialog is closed
   if (!open) {
     return (
       <button
@@ -85,7 +85,7 @@ export function HelpDialog({ projectId, projectName }: Props) {
         className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-amber-600 transition-colors cursor-pointer animate-pulse"
       >
         <MessageCircleWarning className="h-4 w-4" />
-        {helpRequests.length} 个待处理协助
+        {helpRequests.length} pending requests
       </button>
     )
   }
@@ -96,34 +96,34 @@ export function HelpDialog({ projectId, projectName }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageCircleWarning className="h-5 w-5 text-amber-400" />
-            Agent 请求人工协助
+            Agent Requests Assistance
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Agent {current.agentIndex} &middot; {new Date(current.createdAt).toLocaleTimeString('zh-CN')}
+            Agent {current.agentIndex} &middot; {new Date(current.createdAt).toLocaleTimeString('en-US')}
             {helpRequests.length > 1 && (
-              <span className="ml-2 text-amber-400">还有 {helpRequests.length - 1} 个待处理</span>
+              <span className="ml-2 text-amber-400">{helpRequests.length - 1} more pending</span>
             )}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Agent 的问题 */}
+        {/* Agent's question */}
         <div className="bg-secondary/50 rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-y-auto">
           {current.message}
         </div>
 
-        {/* 用户回复输入 */}
+        {/* User response input */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">你的回复</label>
+          <label className="text-sm font-medium">Your Response</label>
           <textarea
             value={response}
             onChange={(e) => setResponse(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入提示词或指导信息..."
+            placeholder="Enter hints or guidance..."
             className="w-full min-h-[100px] rounded-lg border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-colors"
             autoFocus
           />
           <p className="text-[11px] text-muted-foreground">
-            回复将写入项目目录的 .human-response.md，Agent 可在后续操作中读取。按 Ctrl+Enter 提交。
+            Your response will be written to .human-response.md in the project directory. The Agent can read it in subsequent operations. Press Ctrl+Enter to submit.
           </p>
         </div>
 
@@ -134,7 +134,7 @@ export function HelpDialog({ projectId, projectName }: Props) {
             className="gap-2 cursor-pointer"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            提交回复
+            Submit Response
           </Button>
         </DialogFooter>
       </DialogContent>

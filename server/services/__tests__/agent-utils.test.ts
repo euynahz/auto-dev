@@ -2,36 +2,36 @@ import { describe, it, expect } from 'vitest'
 import { textSimilarity, parseThinkingContent } from '../agent.js'
 
 describe('textSimilarity', () => {
-  it('完全相同的字符串 → 1.0', () => {
+  it('identical strings → 1.0', () => {
     expect(textSimilarity('hello world foo', 'hello world foo')).toBe(1)
   })
 
-  it('完全不同的字符串 → 0', () => {
+  it('completely different strings → 0', () => {
     expect(textSimilarity('aaa bbb ccc', 'xxx yyy zzz')).toBe(0)
   })
 
-  it('部分重叠 → 0 < result < 1', () => {
+  it('partial overlap → 0 < result < 1', () => {
     const result = textSimilarity('hello world foo bar', 'hello world baz qux')
     expect(result).toBeGreaterThan(0)
     expect(result).toBeLessThan(1)
   })
 
-  it('空字符串 → 0', () => {
+  it('empty string → 0', () => {
     expect(textSimilarity('', 'hello world foo')).toBe(0)
     expect(textSimilarity('hello world foo', '')).toBe(0)
     expect(textSimilarity('', '')).toBe(0)
   })
 
-  it('短词（≤2字符）被忽略', () => {
-    // 只有短词 → 过滤后集合为空 → 0
+  it('short words (<=2 chars) are ignored', () => {
+    // only short words → filtered set is empty → 0
     expect(textSimilarity('a b c', 'a b c')).toBe(0)
-    // 混合：短词不参与计算
+    // mixed: short words excluded from calculation
     expect(textSimilarity('is a hello', 'is a world')).toBe(0) // hello vs world, no overlap
   })
 })
 
 describe('parseThinkingContent', () => {
-  it('单层 tool_use 对象 → "toolName → summary"', () => {
+  it('single tool_use object → "toolName → summary"', () => {
     const json = JSON.stringify({
       type: 'tool_use',
       name: 'Read',
@@ -40,7 +40,7 @@ describe('parseThinkingContent', () => {
     expect(parseThinkingContent(json)).toBe('Read → /tmp/test.ts')
   })
 
-  it('tool_use 无关键参数 → 只返回 name', () => {
+  it('tool_use without key params → returns name only', () => {
     const json = JSON.stringify({
       type: 'tool_use',
       name: 'ListFiles',
@@ -49,7 +49,7 @@ describe('parseThinkingContent', () => {
     expect(parseThinkingContent(json)).toBe('ListFiles')
   })
 
-  it('content 数组含 text + tool_use → 拼接', () => {
+  it('content array with text + tool_use → concatenated', () => {
     const json = JSON.stringify({
       content: [
         { type: 'text', text: 'Let me check the file' },
@@ -62,24 +62,24 @@ describe('parseThinkingContent', () => {
     expect(result).toContain('Read → index.ts')
   })
 
-  it('有 message 字段（字符串） → 返回 message', () => {
+  it('has message field (string) → returns message', () => {
     const json = JSON.stringify({ message: 'Something went wrong' })
     expect(parseThinkingContent(json)).toBe('Something went wrong')
   })
 
-  it('type + model 兜底 → "type · model"', () => {
+  it('type + model fallback → "type · model"', () => {
     const json = JSON.stringify({ type: 'response', model: 'claude-opus-4-6' })
     const result = parseThinkingContent(json)
     expect(result).toContain('response')
     expect(result).toContain('claude-opus-4-6')
   })
 
-  it('非 JSON → 截断返回原文', () => {
+  it('non-JSON → truncated raw text', () => {
     const text = 'This is not JSON at all, just plain text'
     expect(parseThinkingContent(text)).toBe(text)
   })
 
-  it('超长非 JSON → 截断到 200 字符', () => {
+  it('long non-JSON → truncated to 200 chars', () => {
     const text = 'x'.repeat(300)
     expect(parseThinkingContent(text)).toBe('x'.repeat(200))
   })

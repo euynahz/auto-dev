@@ -3,29 +3,29 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-// 我们需要 mock getProjectDir 使其指向临时目录
-// project.ts 中 getProjectDir 是内部函数，所以我们直接测试 addLog / getLogs 的行为
-// 方案：mock DATA_DIR 相关路径，通过设置环境让 project.ts 使用临时目录
+// Mock getProjectDir to point to a temp directory
+// getProjectDir is internal in project.ts, so we test addLog/getLogs behavior directly
+// Approach: mock DATA_DIR paths by setting up a temp directory structure
 
 let tmpDir: string
 let projectId: string
 
-// 动态 import 以便每次测试重新加载模块
+// Dynamic import to reload module for each test
 async function importProject() {
-  // project.ts 使用 process.cwd() 来确定 DATA_DIR
-  // 我们通过在临时目录下创建对应结构来测试
+  // project.ts uses process.cwd() to determine DATA_DIR
+  // We test by creating the corresponding structure in a temp directory
   const mod = await import('../project.js')
   return mod
 }
 
-describe('JSONL 日志管理', () => {
+describe('JSONL log management', () => {
   let projectService: Awaited<ReturnType<typeof importProject>>
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autodev-test-'))
     projectId = 'test-project-' + Date.now()
 
-    // 创建项目数据目录结构（模拟 getProjectDir 的输出）
+    // Create project data directory structure (simulating getProjectDir output)
     const projDir = path.join(tmpDir, 'projects', projectId)
     fs.mkdirSync(projDir, { recursive: true })
 
@@ -36,8 +36,8 @@ describe('JSONL 日志管理', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  // 直接操作文件来测试 JSONL 格式的读写逻辑
-  // 因为 project.ts 的路径是硬编码的，我们测试核心逻辑的等价实现
+  // Directly operate files to test JSONL read/write logic
+  // Since project.ts paths are hardcoded, we test equivalent core logic
 
   function getLogFilePath() {
     return path.join(tmpDir, 'logs.jsonl')
@@ -57,8 +57,8 @@ describe('JSONL 日志管理', () => {
     }
   }
 
-  describe('addLog — 追加写入', () => {
-    it('向 JSONL 文件追加一行', () => {
+  describe('addLog — append write', () => {
+    it('appends a line to JSONL file', () => {
       const filePath = getLogFilePath()
       const entry = makeEntry(1)
       fs.appendFileSync(filePath, JSON.stringify(entry) + '\n')
@@ -69,7 +69,7 @@ describe('JSONL 日志管理', () => {
       expect(JSON.parse(lines[0])).toMatchObject({ id: 'entry-1', content: 'Log entry 1' })
     })
 
-    it('多次追加不覆盖', () => {
+    it('multiple appends do not overwrite', () => {
       const filePath = getLogFilePath()
       for (let i = 0; i < 5; i++) {
         fs.appendFileSync(filePath, JSON.stringify(makeEntry(i)) + '\n')
@@ -79,8 +79,8 @@ describe('JSONL 日志管理', () => {
     })
   })
 
-  describe('getLogs — 读取和解析', () => {
-    it('读取 JSONL 并解析为数组', () => {
+  describe('getLogs — read and parse', () => {
+    it('reads JSONL and parses to array', () => {
       const filePath = getLogFilePath()
       for (let i = 0; i < 3; i++) {
         fs.appendFileSync(filePath, JSON.stringify(makeEntry(i)) + '\n')
@@ -92,7 +92,7 @@ describe('JSONL 日志管理', () => {
       expect(entries[2].content).toBe('Log entry 2')
     })
 
-    it('空文件返回空数组', () => {
+    it('empty file returns empty array', () => {
       const filePath = getLogFilePath()
       fs.writeFileSync(filePath, '')
       const content = fs.readFileSync(filePath, 'utf-8')
@@ -100,7 +100,7 @@ describe('JSONL 日志管理', () => {
       expect(entries).toHaveLength(0)
     })
 
-    it('跳过格式错误的行', () => {
+    it('skips malformed lines', () => {
       const filePath = getLogFilePath()
       fs.writeFileSync(filePath, [
         JSON.stringify(makeEntry(0)),
@@ -117,12 +117,12 @@ describe('JSONL 日志管理', () => {
     })
   })
 
-  describe('超过 5000 条时自动截断', () => {
-    it('读取时截断到最后 5000 条', () => {
+  describe('auto-truncates beyond 5000 entries', () => {
+    it('truncates to last 5000 entries on read', () => {
       const LOG_MAX = 5000
       const filePath = getLogFilePath()
 
-      // 写入 5010 条
+      // write 5010 entries
       const totalEntries = LOG_MAX + 10
       const lines: string[] = []
       for (let i = 0; i < totalEntries; i++) {
@@ -130,7 +130,7 @@ describe('JSONL 日志管理', () => {
       }
       fs.writeFileSync(filePath, lines.join('\n') + '\n')
 
-      // 模拟 getLogs 的截断逻辑
+      // simulate getLogs truncation logic
       const content = fs.readFileSync(filePath, 'utf-8')
       const allLines = content.split('\n').filter(l => l.trim())
       const entries = allLines.map(l => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
@@ -139,31 +139,31 @@ describe('JSONL 日志管理', () => {
 
       if (entries.length > LOG_MAX) {
         const trimmed = entries.slice(-LOG_MAX)
-        // 截断后写回
+        // write back after truncation
         fs.writeFileSync(filePath, trimmed.map((e: unknown) => JSON.stringify(e)).join('\n') + '\n')
 
-        // 验证截断后的文件
+        // verify truncated file
         const afterContent = fs.readFileSync(filePath, 'utf-8')
         const afterLines = afterContent.split('\n').filter(l => l.trim())
         expect(afterLines).toHaveLength(LOG_MAX)
 
-        // 第一条应该是原来的第 10 条（index=10）
+        // first entry should be the original 10th (index=10)
         const first = JSON.parse(afterLines[0])
         expect(first.id).toBe('entry-10')
       }
     })
   })
 
-  describe('logs.json → logs.jsonl 迁移', () => {
-    it('旧 logs.json 迁移为 logs.jsonl', () => {
+  describe('logs.json → logs.jsonl migration', () => {
+    it('migrates old logs.json to logs.jsonl', () => {
       const legacyPath = getLegacyLogFilePath()
       const jsonlPath = getLogFilePath()
 
-      // 创建旧格式文件
+      // create old format file
       const oldEntries = [makeEntry(0), makeEntry(1), makeEntry(2)]
       fs.writeFileSync(legacyPath, JSON.stringify(oldEntries))
 
-      // 模拟迁移逻辑
+      // simulate migration logic
       if (fs.existsSync(legacyPath) && !fs.existsSync(jsonlPath)) {
         const entries = JSON.parse(fs.readFileSync(legacyPath, 'utf-8'))
         if (Array.isArray(entries) && entries.length > 0) {
@@ -172,7 +172,7 @@ describe('JSONL 日志管理', () => {
         fs.unlinkSync(legacyPath)
       }
 
-      // 验证
+      // verify
       expect(fs.existsSync(legacyPath)).toBe(false)
       expect(fs.existsSync(jsonlPath)).toBe(true)
 
@@ -182,15 +182,15 @@ describe('JSONL 日志管理', () => {
       expect(JSON.parse(lines[0]).id).toBe('entry-0')
     })
 
-    it('jsonl 已存在时只删除旧文件', () => {
+    it('only deletes old file when jsonl already exists', () => {
       const legacyPath = getLegacyLogFilePath()
       const jsonlPath = getLogFilePath()
 
-      // 两个文件都存在
+      // both files exist
       fs.writeFileSync(legacyPath, JSON.stringify([makeEntry(99)]))
       fs.writeFileSync(jsonlPath, JSON.stringify(makeEntry(0)) + '\n')
 
-      // 模拟迁移逻辑
+      // simulate migration logic
       if (fs.existsSync(legacyPath)) {
         if (fs.existsSync(jsonlPath)) {
           fs.unlinkSync(legacyPath)
@@ -198,7 +198,7 @@ describe('JSONL 日志管理', () => {
       }
 
       expect(fs.existsSync(legacyPath)).toBe(false)
-      // jsonl 内容不变
+      // jsonl content unchanged
       const content = fs.readFileSync(jsonlPath, 'utf-8')
       const entries = content.split('\n').filter(l => l.trim()).map(l => JSON.parse(l))
       expect(entries).toHaveLength(1)

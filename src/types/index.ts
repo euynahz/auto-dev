@@ -1,4 +1,4 @@
-// ===== 项目相关类型 =====
+// ===== Project Types =====
 
 export interface Feature {
   id: string
@@ -51,7 +51,7 @@ export interface Session {
   logs: LogEntry[]
 }
 
-// ===== Agent 日志类型 =====
+// ===== Agent Log Types =====
 
 export interface LogEntry {
   id: string
@@ -62,10 +62,10 @@ export interface LogEntry {
   toolName?: string
   toolInput?: string
   agentIndex?: number
-  temporary?: boolean // 临时日志，前端使用替换策略显示
+  temporary?: boolean // Temporary log entry, frontend uses replacement strategy for display
 }
 
-// ===== 人工协助请求 =====
+// ===== Human Assistance Requests =====
 
 export interface HelpRequest {
   id: string
@@ -79,7 +79,7 @@ export interface HelpRequest {
   resolvedAt?: string
 }
 
-// ===== WebSocket 消息类型 =====
+// ===== WebSocket Message Types =====
 
 export type WSMessage =
   | { type: 'log'; projectId: string; entry: LogEntry }
@@ -91,7 +91,7 @@ export type WSMessage =
   | { type: 'agent_count'; projectId: string; active: number; total: number }
   | { type: 'human_help'; projectId: string; request: HelpRequest }
 
-// ===== API 请求类型 =====
+// ===== API Request Types =====
 
 export interface CreateProjectRequest {
   name: string
@@ -120,7 +120,7 @@ export interface ImportProjectRequest {
   reviewBeforeCoding?: boolean
 }
 
-// ===== Provider 类型 =====
+// ===== Provider Types =====
 
 export interface ProviderCapabilities {
   streaming: boolean

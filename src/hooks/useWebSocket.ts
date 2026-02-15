@@ -6,7 +6,7 @@ import type { WSMessage } from '@/types'
 const BASE_DELAY = 3000
 const MAX_DELAY = 30000
 
-// WebSocket 连接 hook
+// WebSocket connection hook
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -20,20 +20,20 @@ export function useWebSocket() {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     let wsUrl = `${protocol}//${window.location.host}/ws`
-    // 传递 token 认证（从 URL 参数或 localStorage 获取）
+    // Pass token auth (from URL params or localStorage)
     const token = new URLSearchParams(window.location.search).get('token')
     if (token) wsUrl += `?token=${encodeURIComponent(token)}`
     const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
-      console.log('[WS] 已连接')
+      console.log('[WS] Connected')
       setWsConnected(true)
 
-      // 重连成功：重置退避计数，拉取最新项目状态
+      // Reconnect success: reset backoff counter, fetch latest project state
       if (retriesRef.current > 0) {
-        console.log('[WS] 重连成功，刷新项目状态')
+        console.log('[WS] Reconnected, refreshing project state')
         api.getProjects().then(setProjects).catch((e) => {
-          console.error('[WS] 刷新项目状态失败:', e)
+          console.error('[WS] Failed to refresh project state:', e)
         })
       }
       retriesRef.current = 0
@@ -44,7 +44,7 @@ export function useWebSocket() {
         const msg: WSMessage = JSON.parse(event.data)
         handleWSMessage(msg)
       } catch (e) {
-        console.error('[WS] 解析消息失败:', e)
+        console.error('[WS] Failed to parse message:', e)
       }
     }
 
@@ -52,12 +52,12 @@ export function useWebSocket() {
       setWsConnected(false)
       const delay = Math.min(BASE_DELAY * Math.pow(2, retriesRef.current), MAX_DELAY)
       retriesRef.current++
-      console.log(`[WS] 连接断开，${delay / 1000}s 后重连 (第${retriesRef.current}次)`)
+      console.log(`[WS] Disconnected, reconnecting in ${delay / 1000}s (attempt ${retriesRef.current})`)
       reconnectTimer.current = setTimeout(connect, delay)
     }
 
     ws.onerror = (err) => {
-      console.error('[WS] 错误:', err)
+      console.error('[WS] Error:', err)
       ws.close()
     }
 

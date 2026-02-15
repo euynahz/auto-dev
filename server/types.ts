@@ -1,4 +1,4 @@
-// ===== 服务端类型定义 =====
+// ===== Server type definitions =====
 
 export interface ProjectData {
   id: string
@@ -6,15 +6,15 @@ export interface ProjectData {
   spec: string
   status: 'idle' | 'initializing' | 'reviewing' | 'running' | 'paused' | 'completed' | 'error'
   provider: string    // AI provider: 'claude' | 'codex' | 'gemini' | ...
-  providerSettings?: Record<string, unknown>  // Provider 专属设置
+  providerSettings?: Record<string, unknown>  // Provider-specific settings
   model: string
-  concurrency: number // 并发 Agent 数量，默认 1
-  useAgentTeams: boolean // 使用 Agent Teams 模式（provider 支持时，内部协调多 Agent）
-  systemPrompt?: string // 项目级系统提示词，注入到所有 Agent 的 --system-prompt 参数
-  reviewBeforeCoding?: boolean // 初始化后进入审查模式，不自动开始编码
+  concurrency: number // Concurrent agent count, default 1
+  useAgentTeams: boolean // Use Agent Teams mode (internal multi-agent coordination when provider supports it)
+  systemPrompt?: string // Project-level system prompt, injected into all agents via --system-prompt
+  reviewBeforeCoding?: boolean // Enter review mode after initialization, do not auto-start coding
   createdAt: string
   updatedAt: string
-  projectDir: string // 项目在磁盘上的路径
+  projectDir: string // Project path on disk
 }
 
 export interface FeatureData {
@@ -23,9 +23,9 @@ export interface FeatureData {
   description: string
   steps: string[]
   passes: boolean
-  inProgress?: boolean // Agent 正在处理中
-  failCount?: number      // 尝试失败次数
-  lastAttemptAt?: string  // 最后一次尝试时间
+  inProgress?: boolean // Agent is currently processing
+  failCount?: number      // Attempt failure count
+  lastAttemptAt?: string  // Last attempt time
 }
 
 export interface SessionData {
@@ -34,10 +34,10 @@ export interface SessionData {
   type: 'initializer' | 'coding' | 'agent-teams'
   status: 'running' | 'completed' | 'failed' | 'stopped'
   featureId?: string
-  agentIndex?: number  // Agent 编号（0-based）
-  branch?: string      // 工作分支名
-  pid?: number         // claude 进程 PID，用于重启后清理孤儿进程
-  logFile?: string     // claude 原始输出日志文件路径
+  agentIndex?: number  // Agent index (0-based)
+  branch?: string      // Work branch name
+  pid?: number         // Claude process PID, for cleaning up orphans after restart
+  logFile?: string     // Claude raw output log file path
   startedAt: string
   endedAt?: string
 }
@@ -50,8 +50,8 @@ export interface LogEntryData {
   content: string
   toolName?: string
   toolInput?: string
-  agentIndex?: number // Agent 编号，用于前端过滤
-  temporary?: boolean // 临时日志，前端使用替换策略显示
+  agentIndex?: number // Agent index, for frontend filtering
+  temporary?: boolean // Temporary log, frontend uses replacement display strategy
 }
 
 export interface HelpRequestData {
@@ -64,13 +64,13 @@ export interface HelpRequestData {
   response?: string
   createdAt: string
   resolvedAt?: string
-  // 上下文信息，帮助人工理解和 Agent 恢复
+  // Context info to help humans understand and agents recover
   featureId?: string
   featureDescription?: string
   recentLogs?: string[]
 }
 
-// WebSocket 广播消息
+// WebSocket broadcast messages
 export type BroadcastMessage =
   | { type: 'log'; projectId: string; entry: LogEntryData }
   | { type: 'status'; projectId: string; status: ProjectData['status'] }

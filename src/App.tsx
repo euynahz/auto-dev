@@ -5,7 +5,7 @@ import Dashboard from '@/pages/Dashboard'
 import ProjectDetail from '@/pages/ProjectDetail'
 
 function AppContent() {
-  // 建立 WebSocket 连接
+  // Establish WebSocket connection
   useWebSocket()
 
   return (

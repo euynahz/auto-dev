@@ -2,18 +2,18 @@ import type { AgentProvider, AgentEvent, SessionContext } from './types.js'
 
 // ===== Claude Code CLI Provider =====
 
-/** 判断字符串是否像 JSON */
+/** Check if string looks like JSON */
 function looksLikeJson(s: string): boolean {
   const t = s.trim()
   return (t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))
 }
 
-/** 解析 Claude API 响应 JSON 中的 content 字段，提取可读内容 */
+/** Parse content field from Claude API response JSON, extract readable content */
 export function parseThinkingContent(jsonStr: string): string {
   try {
     const obj = JSON.parse(jsonStr)
 
-    // 处理 {"content": [...], "role": "assistant", ...} 格式
+    // Handle {"content": [...], "role": "assistant", ...} format
     const contentArr = obj.content || obj.message?.content
     if (Array.isArray(contentArr)) {
       const parts: string[] = []
@@ -30,31 +30,31 @@ export function parseThinkingContent(jsonStr: string): string {
       if (parts.length > 0) return parts.join(' | ')
     }
 
-    // 处理单层 tool_use 对象
+    // Handle single tool_use object
     if (obj.type === 'tool_use' && obj.name) {
       const input = obj.input || {}
       const summary = input.file_path || input.command || input.pattern || input.query || input.url || ''
       return summary ? `${obj.name} → ${summary}` : obj.name
     }
 
-    // 处理有 message 字段的情况
+    // Handle case with message field
     if (typeof obj.message === 'string' && obj.message.trim()) {
       return obj.message.slice(0, 200)
     }
 
-    // 兜底：返回 type + model 等关键信息
+    // Fallback: return type + model and other key info
     const fallbackParts: string[] = []
     if (obj.type) fallbackParts.push(obj.type)
     if (obj.model) fallbackParts.push(obj.model)
     if (obj.stop_reason) fallbackParts.push(`stop: ${obj.stop_reason}`)
     if (fallbackParts.length > 0) return fallbackParts.join(' · ')
   } catch {
-    // 解析失败
+    // Parse failed
   }
   return jsonStr.slice(0, 200)
 }
 
-/** Claude stream-json 噪音事件 */
+/** Claude stream-json noise events */
 const NOISE_SUBTYPES = new Set(['hook_started', 'hook_response', 'init', 'config'])
 
 export const claudeProvider: AgentProvider = {
@@ -75,15 +75,15 @@ export const claudeProvider: AgentProvider = {
   settings: [
     {
       key: 'verbose',
-      label: '详细输出',
-      description: '输出完整的 stream-json 事件流',
+      label: 'Verbose output',
+      description: 'Output full stream-json event stream',
       type: 'boolean',
       default: true,
     },
     {
       key: 'disableSlashCommands',
-      label: '禁用斜杠命令',
-      description: '防止 Agent 意外触发 /commands',
+      label: 'Disable slash commands',
+      description: 'Prevent agent from accidentally triggering /commands',
       type: 'boolean',
       default: true,
     },
@@ -147,7 +147,7 @@ export const claudeProvider: AgentProvider = {
 
       return { type: 'ignore' }
     } catch {
-      // 解析失败：JSON 内容作为 thinking，纯文本作为 system
+      // Parse failed: JSON content as thinking, plain text as system
       if (line.trim()) {
         if (looksLikeJson(line.trim())) {
           return { type: 'thinking', content: parseThinkingContent(line.trim()) }

@@ -12,13 +12,13 @@ import { ImportProjectDialog } from '@/components/project/ImportProjectDialog'
 import type { ProjectStatus } from '@/types'
 
 const statusConfig: Record<ProjectStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'success' | 'warning' }> = {
-  idle: { label: '空闲', variant: 'secondary' },
-  initializing: { label: '初始化中', variant: 'warning' },
-  reviewing: { label: '待审查', variant: 'warning' },
-  running: { label: '运行中', variant: 'default' },
-  paused: { label: '已暂停', variant: 'warning' },
-  completed: { label: '已完成', variant: 'success' },
-  error: { label: '错误', variant: 'destructive' },
+  idle: { label: 'Idle', variant: 'secondary' },
+  initializing: { label: 'Initializing', variant: 'warning' },
+  reviewing: { label: 'Reviewing', variant: 'warning' },
+  running: { label: 'Running', variant: 'default' },
+  paused: { label: 'Paused', variant: 'warning' },
+  completed: { label: 'Completed', variant: 'success' },
+  error: { label: 'Error', variant: 'destructive' },
 }
 
 function SkeletonCard() {
@@ -60,12 +60,12 @@ export default function Dashboard() {
   const handleDelete = async (e: React.MouseEvent, projectId: string, projectName: string) => {
     e.preventDefault()
     e.stopPropagation()
-    if (!confirm(`确定要删除项目「${projectName}」吗？此操作不可撤销。`)) return
+    if (!confirm(`Are you sure you want to delete "${projectName}"? This action cannot be undone.`)) return
     try {
       await api.deleteProject(projectId)
       removeProject(projectId)
     } catch (err) {
-      console.error('删除失败:', err)
+      console.error('Delete failed:', err)
     }
   }
 
@@ -101,17 +101,17 @@ export default function Dashboard() {
       {/* Page header */}
       <div className="flex items-center justify-between mb-8 animate-fade-in-up">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">项目列表</h1>
-          <p className="text-muted-foreground mt-1">管理你的 AI Agent 自动开发项目</p>
+          <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
+          <p className="text-muted-foreground mt-1">Manage your AI Agent automated development projects</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setImportDialogOpen(true)} className="gap-2 cursor-pointer">
             <FolderOpen className="h-4 w-4" />
-            导入项目
+            Import Project
           </Button>
           <Button onClick={() => setCreateDialogOpen(true)} className="gap-2 cursor-pointer">
             <Plus className="h-4 w-4" />
-            新建项目
+            Create Project
           </Button>
         </div>
       </div>
@@ -124,16 +124,16 @@ export default function Dashboard() {
               <Sparkles className="h-16 w-16 text-muted-foreground/30 animate-float" />
               <div className="absolute inset-0 bg-primary/5 rounded-full blur-2xl" />
             </div>
-            <p className="text-lg text-muted-foreground mb-1">还没有项目</p>
-            <p className="text-sm text-muted-foreground/60 mb-6">创建或导入一个项目开始 AI 自动开发</p>
+            <p className="text-lg text-muted-foreground mb-1">No projects yet</p>
+            <p className="text-sm text-muted-foreground/60 mb-6">Create or import a project to start AI-powered development</p>
             <div className="flex gap-3">
               <Button onClick={() => setImportDialogOpen(true)} variant="outline" className="gap-2 cursor-pointer">
                 <FolderOpen className="h-4 w-4" />
-                导入已有项目
+                Import Existing Project
               </Button>
               <Button onClick={() => setCreateDialogOpen(true)} className="gap-2 cursor-pointer">
                 <Zap className="h-4 w-4" />
-                创建新项目
+                Create New Project
               </Button>
             </div>
           </CardContent>
@@ -175,7 +175,7 @@ export default function Dashboard() {
                   <CardContent>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">进度</span>
+                        <span className="text-muted-foreground">Progress</span>
                         <span className="flex items-center gap-1.5">
                           {project.status === 'running' && <Play className="h-3 w-3 text-primary" />}
                           {project.status === 'completed' && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
@@ -193,7 +193,7 @@ export default function Dashboard() {
                         <span className="px-1.5 py-0.5 rounded bg-secondary text-[10px] font-medium uppercase">{project.provider || 'claude'}</span>
                         <span className="font-mono">{project.model}</span>
                       </span>
-                      <span>{new Date(project.createdAt).toLocaleDateString('zh-CN')}</span>
+                      <span>{new Date(project.createdAt).toLocaleDateString('en-US')}</span>
                     </div>
                   </CardContent>
                 </Card>

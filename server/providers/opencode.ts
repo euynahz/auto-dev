@@ -20,8 +20,8 @@ export const opencodeProvider: AgentProvider = {
   settings: [
     {
       key: 'title',
-      label: 'Session 标题',
-      description: '给 OpenCode session 命名，便于追踪',
+      label: 'Session title',
+      description: 'Name the OpenCode session for easier tracking',
       type: 'string',
       default: '',
     },

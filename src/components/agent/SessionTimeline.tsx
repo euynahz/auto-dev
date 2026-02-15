@@ -14,15 +14,15 @@ interface Props {
 }
 
 const statusStyles: Record<string, { bar: string; badge: 'default' | 'success' | 'destructive' | 'warning'; label: string }> = {
-  running:   { bar: 'bg-blue-500/80 hover:bg-blue-500',       badge: 'default',     label: '运行中' },
-  completed: { bar: 'bg-emerald-500/80 hover:bg-emerald-500', badge: 'success',     label: '已完成' },
-  failed:    { bar: 'bg-red-500/80 hover:bg-red-500',         badge: 'destructive', label: '失败' },
-  stopped:   { bar: 'bg-yellow-500/80 hover:bg-yellow-500',   badge: 'warning',     label: '已停止' },
+  running:   { bar: 'bg-blue-500/80 hover:bg-blue-500',       badge: 'default',     label: 'Running' },
+  completed: { bar: 'bg-emerald-500/80 hover:bg-emerald-500', badge: 'success',     label: 'Completed' },
+  failed:    { bar: 'bg-red-500/80 hover:bg-red-500',         badge: 'destructive', label: 'Failed' },
+  stopped:   { bar: 'bg-yellow-500/80 hover:bg-yellow-500',   badge: 'warning',     label: 'Stopped' },
 }
 
 const typeLabels: Record<string, string> = {
-  initializer: '初始化',
-  coding: '编码',
+  initializer: 'Initializer',
+  coding: 'Coding',
   'agent-teams': 'Agent Teams',
 }
 
@@ -81,10 +81,10 @@ function getSessionTaskLabel(
   }
 
   // Initializer sessions
-  if (session.type === 'initializer') return '需求拆解'
+  if (session.type === 'initializer') return 'Spec Breakdown'
 
   // Agent Teams
-  if (session.type === 'agent-teams') return '全流程开发'
+  if (session.type === 'agent-teams') return 'End-to-End Development'
 
   // Serial coding — try to infer from logs
   const inferredId = inferFeatureIdFromLogs(session)
@@ -253,9 +253,9 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
       setLogContent(text)
     } catch (err) {
       if (err instanceof Error && err.message === 'LOG_NOT_FOUND') {
-        setLogError('日志文件不存在，可能已被删除')
+        setLogError('Log file not found, it may have been deleted')
       } else {
-        setLogError('获取日志失败')
+        setLogError('Failed to fetch log')
       }
     } finally {
       setLogLoading(false)
@@ -271,7 +271,7 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
   if (sessions.length === 0) {
     return (
       <div className="text-center text-muted-foreground py-4 text-sm animate-fade-in">
-        暂无 Session 记录
+        No session records yet
       </div>
     )
   }
@@ -333,7 +333,7 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
                       {/* Task info */}
                       {taskLabel && (
                         <div className="flex items-start gap-2">
-                          <span className="text-muted-foreground shrink-0">任务:</span>
+                          <span className="text-muted-foreground shrink-0">Task:</span>
                           <span className="font-medium">
                             {session.featureId && <span className="text-muted-foreground mr-1">{session.featureId}</span>}
                             {taskLabel}
@@ -346,9 +346,9 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <Clock className="h-3 w-3" />
                           <span className="font-mono">
-                            {new Date(session.startedAt).toLocaleTimeString('zh-CN')}
+                            {new Date(session.startedAt).toLocaleTimeString('en-US')}
                             {' → '}
-                            {session.endedAt ? new Date(session.endedAt).toLocaleTimeString('zh-CN') : '进行中'}
+                            {session.endedAt ? new Date(session.endedAt).toLocaleTimeString('en-US') : 'In Progress'}
                           </span>
                           <span className="text-foreground font-medium">({formatDuration(duration)})</span>
                         </div>
@@ -388,7 +388,7 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
                           <div className="space-y-1">
                             <div className="flex items-center gap-1 text-red-400">
                               <AlertCircle className="h-3 w-3" />
-                              <span className="font-medium">错误信息</span>
+                              <span className="font-medium">Error Details</span>
                             </div>
                             {errors.map((err, idx) => (
                               <pre key={idx} className="bg-red-500/10 text-red-300 rounded px-2 py-1 text-[11px] leading-relaxed overflow-x-auto whitespace-pre-wrap break-all">
@@ -406,17 +406,17 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
                           <button
                             onClick={(e) => { e.stopPropagation(); copyPath(session.logFile!) }}
                             className="shrink-0 p-0.5 rounded hover:bg-secondary cursor-pointer"
-                            title="复制路径"
+                            title="Copy Path"
                           >
                             {copiedPath ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); openLogViewer(session) }}
                             className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-secondary cursor-pointer text-primary"
-                            title="查看日志"
+                            title="View Log"
                           >
                             <FileText className="h-3 w-3" />
-                            <span>查看</span>
+                            <span>View</span>
                           </button>
                         </div>
                       )}
@@ -435,7 +435,7 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Session 日志
+              Session Log
               {logSession && (
                 <Badge variant={statusStyles[logSession.status]?.badge || 'default'} className="text-[10px] h-4 px-1.5 ml-1">
                   {statusStyles[logSession.status]?.label || logSession.status}
@@ -450,7 +450,7 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
                 {typeLabels[logSession.type] || logSession.type}
                 {logSession.agentIndex != null && ` #${logSession.agentIndex}`}
                 {' · '}
-                {new Date(logSession.startedAt).toLocaleString('zh-CN')}
+                {new Date(logSession.startedAt).toLocaleString('en-US')}
                 {logSession.featureId && (() => {
                   const f = featureMap.get(logSession.featureId!)
                   return f ? ` · ${f.id}: ${f.description}` : ''
@@ -463,7 +463,7 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
             {logLoading && (
               <div className="flex items-center justify-center h-32 gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">加载日志中...</span>
+                <span className="text-sm">Loading log...</span>
               </div>
             )}
 
@@ -476,7 +476,7 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
 
             {!logLoading && !logError && parsedLines.length === 0 && (
               <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                日志内容为空
+                Log content is empty
               </div>
             )}
 

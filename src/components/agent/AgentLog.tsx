@@ -71,7 +71,7 @@ const LogEntryRow = memo(function LogEntryRow({ entry, showBreak, isRecent }: {
           )}
         </span>
         <span className="text-[10px] text-gray-700 shrink-0 mt-0.5 font-mono tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
-          {new Date(entry.timestamp).toLocaleTimeString('zh-CN')}
+          {new Date(entry.timestamp).toLocaleTimeString('en-US')}
         </span>
       </div>
     </div>
@@ -123,7 +123,7 @@ export function AgentLog({ logs, fullscreen, onToggleFullscreen }: Props) {
           <button
             onClick={onToggleFullscreen}
             className="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-white/5 cursor-pointer transition-colors"
-            title={fullscreen ? '退出全屏' : '全屏'}
+            title={fullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
           >
             {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </button>
@@ -143,7 +143,7 @@ export function AgentLog({ logs, fullscreen, onToggleFullscreen }: Props) {
               <span />
               <span />
             </div>
-            <span className="text-gray-600 text-sm">等待 Agent 启动...</span>
+            <span className="text-gray-600 text-sm">Waiting for Agent to start...</span>
           </div>
         ) : (
           logs.map((entry, index) => (

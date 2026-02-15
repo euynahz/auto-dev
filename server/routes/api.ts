@@ -9,12 +9,12 @@ import { log } from '../lib/logger.js'
 
 const router = Router()
 
-// Token 认证中间件
+// Token auth middleware
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const token = process.env.AUTODEV_TOKEN
-  if (!token) return next() // 未设置则跳过认证
+  if (!token) return next() // Skip auth if not set
 
-  // 从 Authorization header 或查询参数获取 token
+  // Get token from Authorization header or query param
   const authHeader = req.headers.authorization
   const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined
   const queryToken = req.query.token as string | undefined
@@ -28,10 +28,10 @@ function authMiddleware(req: Request, res: Response, next: NextFunction) {
 
 router.use(authMiddleware)
 
-// 获取项目列表
+// Get project list
 router.get('/projects', (_req, res) => {
   const projects = projectService.getAllProjects()
-  log.api(`GET /projects — 返回 ${projects.length} 个项目`)
+  log.api(`GET /projects — returning ${projects.length} projects`)
   const result = projects.map((p) => ({
     ...p,
     features: projectService.getFeatures(p.id),
@@ -41,11 +41,11 @@ router.get('/projects', (_req, res) => {
   res.json(result)
 })
 
-// 获取项目详情
+// Get project details
 router.get('/projects/:id', (req, res) => {
   log.api(`GET /projects/${req.params.id}`)
   const project = projectService.getProject(req.params.id)
-  if (!project) return res.status(404).json({ message: '项目不存在' })
+  if (!project) return res.status(404).json({ message: 'Project not found' })
 
   res.json({
     ...project,
@@ -55,30 +55,30 @@ router.get('/projects/:id', (req, res) => {
   })
 })
 
-// 获取可用 AI providers
+// Get available AI providers
 router.get('/providers', (_req, res) => {
   res.json(getProviderSummaries())
 })
 
-// 检查目录内容
+// Check directory content
 router.post('/check-dir', (req, res) => {
   const { path: dirPath } = req.body
-  if (!dirPath) return res.status(400).json({ message: '路径不能为空' })
+  if (!dirPath) return res.status(400).json({ message: 'Path is required' })
   if (!projectService.isPathSafe(dirPath)) {
-    return res.status(400).json({ error: '路径不在允许范围内' })
+    return res.status(400).json({ error: 'Path is not within allowed range' })
   }
   const result = projectService.checkDir(dirPath)
   res.json(result)
 })
 
-// 创建项目
+// Create project
 router.post('/projects', (req, res) => {
   const { name, spec, path: dirPath, forceClean, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, provider, providerSettings } = req.body
   if (!name || !spec) {
-    return res.status(400).json({ message: '名称和需求描述不能为空' })
+    return res.status(400).json({ message: 'Name and spec are required' })
   }
 
-  log.api(`POST /projects — 创建项目: ${name} (path=${dirPath || '(auto)'}, provider=${provider || 'claude'}, model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
+  log.api(`POST /projects — creating project: ${name} (path=${dirPath || '(auto)'}, provider=${provider || 'claude'}, model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
   const project = projectService.createProject({
     name, spec, model, concurrency, useAgentTeams, systemPrompt,
     reviewBeforeCoding, projectDir: dirPath, forceClean, provider, providerSettings,
@@ -91,14 +91,14 @@ router.post('/projects', (req, res) => {
   })
 })
 
-// 导入已有项目
+// Import existing project
 router.post('/projects/import', (req, res) => {
   const { name, path: dirPath, taskPrompt, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, provider, providerSettings } = req.body
   if (!name || !dirPath) {
-    return res.status(400).json({ message: '名称和目录路径不能为空' })
+    return res.status(400).json({ message: 'Name and directory path are required' })
   }
 
-  log.api(`POST /projects/import — 导入项目: ${name} (path=${dirPath}, agentTeams=${!!useAgentTeams})`)
+  log.api(`POST /projects/import — importing project: ${name} (path=${dirPath}, agentTeams=${!!useAgentTeams})`)
   try {
     const project = projectService.importProject({
       name, dirPath, model, concurrency, useAgentTeams, systemPrompt,
@@ -111,84 +111,84 @@ router.post('/projects/import', (req, res) => {
       progress: { total: 0, passed: 0, percentage: 0 },
     })
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '导入失败'
-    log.error(`导入项目失败: ${message}`)
+    const message = err instanceof Error ? err.message : 'Import failed'
+    log.error(`Failed to import project: ${message}`)
     res.status(400).json({ message })
   }
 })
 
-// 启动 Agent
+// Start agent
 router.post('/projects/:id/start', (req, res) => {
-  log.api(`POST /projects/${req.params.id}/start — 启动 Agent`)
+  log.api(`POST /projects/${req.params.id}/start — starting agent`)
   try {
     agentService.startAgent(req.params.id)
-    res.json({ message: 'Agent 已启动' })
+    res.json({ message: 'Agent started' })
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '启动失败'
-    log.error(`启动 Agent 失败 (${req.params.id}): ${message}`)
+    const message = err instanceof Error ? err.message : 'Start failed'
+    log.error(`Failed to start agent (${req.params.id}): ${message}`)
     res.status(400).json({ message })
   }
 })
 
-// 停止 Agent
+// Stop agent
 router.post('/projects/:id/stop', (req, res) => {
-  log.api(`POST /projects/${req.params.id}/stop — 停止 Agent`)
+  log.api(`POST /projects/${req.params.id}/stop — stopping agent`)
   agentService.stopAgent(req.params.id)
-  res.json({ message: 'Agent 已停止' })
+  res.json({ message: 'Agent stopped' })
 })
 
-// 删除项目
+// Delete project
 router.delete('/projects/:id', (req, res) => {
   const id = req.params.id
-  log.api(`DELETE /projects/${id} — 删除项目`)
-  // 先停止运行中的 Agent
+  log.api(`DELETE /projects/${id} — deleting project`)
+  // Stop running agent first
   if (agentService.isRunning(id)) {
-    log.api(`项目 ${id} 有运行中的 Agent，先停止`)
+    log.api(`Project ${id} has running agent, stopping first`)
     agentService.stopAgent(id)
   }
   const deleted = projectService.deleteProject(id)
-  if (!deleted) return res.status(404).json({ message: '项目不存在' })
-  res.json({ message: '项目已删除' })
+  if (!deleted) return res.status(404).json({ message: 'Project not found' })
+  res.json({ message: 'Project deleted' })
 })
 
-// 获取 feature list
+// Get feature list
 router.get('/projects/:id/features', (req, res) => {
   const features = projectService.syncFeaturesFromDisk(req.params.id)
   res.json(features)
 })
 
-// 获取 session 历史
+// Get session history
 router.get('/projects/:id/sessions', (req, res) => {
   const sessions = projectService.getSessions(req.params.id)
   res.json(sessions)
 })
 
-// 获取历史日志
+// Get historical logs
 router.get('/projects/:id/logs', (req, res) => {
   const logs = projectService.getLogs(req.params.id)
-  log.api(`GET /projects/${req.params.id}/logs — 返回 ${logs.length} 条日志`)
+  log.api(`GET /projects/${req.params.id}/logs — returning ${logs.length} log entries`)
   res.json(logs)
 })
 
-// 获取 session 的 claude 原始日志文件（用于调试）
+// Get raw claude log file for a session (for debugging)
 router.get('/projects/:id/sessions/:sessionId/raw-log', (req, res) => {
   const sessions = projectService.getSessions(req.params.id)
   const session = sessions.find((s) => s.id === req.params.sessionId)
-  if (!session) return res.status(404).json({ message: 'Session 不存在' })
-  if (!session.logFile) return res.status(404).json({ message: '该 Session 无日志文件' })
+  if (!session) return res.status(404).json({ message: 'Session not found' })
+  if (!session.logFile) return res.status(404).json({ message: 'No log file for this session' })
 
-  // 路径沙箱：日志文件必须在 .autodev-data/claude-logs/ 目录下
+  // Path sandbox: log files must be under .autodev-data/claude-logs/
   const resolvedLog = path.resolve(session.logFile)
   const allowedLogDir = path.resolve(path.join('.autodev-data', 'claude-logs'))
   if (!resolvedLog.startsWith(allowedLogDir + path.sep) && resolvedLog !== allowedLogDir) {
-    return res.status(400).json({ error: '路径不在允许范围内' })
+    return res.status(400).json({ error: 'Path is not within allowed range' })
   }
 
   if (!fs.existsSync(session.logFile)) {
-    return res.status(404).json({ message: '日志文件不存在' })
+    return res.status(404).json({ message: 'Log file not found' })
   }
 
-  // 返回最后 200KB 内容（避免文件过大）
+  // Return last 200KB of content (to avoid oversized responses)
   const stat = fs.statSync(session.logFile)
   const maxBytes = 200 * 1024
   const start = Math.max(0, stat.size - maxBytes)
@@ -197,50 +197,50 @@ router.get('/projects/:id/sessions/:sessionId/raw-log', (req, res) => {
   stream.pipe(res)
 })
 
-// 获取待处理的人工协助请求
+// Get pending human help requests
 router.get('/projects/:id/help-requests', (req, res) => {
   const requests = projectService.getHelpRequests(req.params.id)
   const pending = requests.filter((r) => r.status === 'pending')
-  log.api(`GET /projects/${req.params.id}/help-requests — ${pending.length} 个待处理`)
+  log.api(`GET /projects/${req.params.id}/help-requests — ${pending.length} pending`)
   res.json(pending)
 })
 
-// 提交人工协助回复
+// Submit human help response
 router.post('/projects/:id/help-response', (req, res) => {
   const { requestId, response } = req.body
   if (!requestId || !response) {
-    return res.status(400).json({ message: '请求 ID 和回复内容不能为空' })
+    return res.status(400).json({ message: 'Request ID and response are required' })
   }
-  log.api(`POST /projects/${req.params.id}/help-response — 回复请求 ${requestId}`)
+  log.api(`POST /projects/${req.params.id}/help-response — responding to request ${requestId}`)
   const resolved = projectService.resolveHelpRequest(req.params.id, requestId, response)
-  if (!resolved) return res.status(404).json({ message: '请求不存在' })
+  if (!resolved) return res.status(404).json({ message: 'Request not found' })
 
-  // 人工回复后自动重启 Agent（如果当前未运行）
+  // Auto-restart agent after human response (if not currently running)
   const project = projectService.getProject(req.params.id)
   if (project && !agentService.isRunning(req.params.id) && project.status !== 'completed') {
-    log.api(`人工回复后自动重启 Agent (project=${req.params.id})`)
+    log.api(`Auto-restarting agent after human response (project=${req.params.id})`)
     try {
       agentService.startAgent(req.params.id)
     } catch (err) {
-      log.api(`自动重启失败: ${err}`)
+      log.api(`Auto-restart failed: ${err}`)
     }
   }
 
   res.json(resolved)
 })
 
-// 更新系统提示词
+// Update system prompt
 router.put('/projects/:id/system-prompt', (req, res) => {
   const { systemPrompt } = req.body
   if (typeof systemPrompt !== 'string') {
-    return res.status(400).json({ message: 'systemPrompt 必须是字符串' })
+    return res.status(400).json({ message: 'systemPrompt must be a string' })
   }
   const project = projectService.getProject(req.params.id)
-  if (!project) return res.status(404).json({ message: '项目不存在' })
+  if (!project) return res.status(404).json({ message: 'Project not found' })
 
-  log.api(`PUT /projects/${req.params.id}/system-prompt — 更新系统提示词`)
+  log.api(`PUT /projects/${req.params.id}/system-prompt — updating system prompt`)
   const updated = projectService.updateProject(req.params.id, { systemPrompt })
-  if (!updated) return res.status(500).json({ message: '更新失败' })
+  if (!updated) return res.status(500).json({ message: 'Update failed' })
 
   res.json({
     ...updated,
@@ -250,52 +250,52 @@ router.put('/projects/:id/system-prompt', (req, res) => {
   })
 })
 
-// 追加需求
+// Append requirements
 router.post('/projects/:id/append-spec', (req, res) => {
   const { spec } = req.body
   if (!spec || !spec.trim()) {
-    return res.status(400).json({ message: '追加需求内容不能为空' })
+    return res.status(400).json({ message: 'Appended spec content is required' })
   }
   const project = projectService.getProject(req.params.id)
-  if (!project) return res.status(404).json({ message: '项目不存在' })
+  if (!project) return res.status(404).json({ message: 'Project not found' })
 
-  log.api(`POST /projects/${req.params.id}/append-spec — 追加需求`)
+  log.api(`POST /projects/${req.params.id}/append-spec — appending spec`)
   try {
     agentService.startAppendInitializer(req.params.id, spec.trim())
-    res.json({ message: '需求追加已启动' })
+    res.json({ message: 'Spec append started' })
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '追加失败'
-    log.error(`追加需求失败 (${req.params.id}): ${message}`)
+    const message = err instanceof Error ? err.message : 'Append failed'
+    log.error(`Failed to append spec (${req.params.id}): ${message}`)
     res.status(400).json({ message })
   }
 })
 
-// 审查修改 Feature
+// Review and modify features
 router.post('/projects/:id/review-features', (req, res) => {
   const { featureIds, instruction } = req.body
   if (!featureIds?.length || !instruction?.trim()) {
-    return res.status(400).json({ message: '请选择 Feature 并输入修改指令' })
+    return res.status(400).json({ message: 'Please select features and enter modification instructions' })
   }
-  log.api(`POST /projects/${req.params.id}/review-features — 审查修改 ${featureIds.length} 个 Feature`)
+  log.api(`POST /projects/${req.params.id}/review-features — reviewing ${featureIds.length} features`)
   try {
     agentService.startReviewSession(req.params.id, featureIds, instruction.trim())
-    res.json({ message: '审查修改已启动' })
+    res.json({ message: 'Review modification started' })
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '审查修改失败'
-    log.error(`审查修改失败 (${req.params.id}): ${message}`)
+    const message = err instanceof Error ? err.message : 'Review modification failed'
+    log.error(`Review modification failed (${req.params.id}): ${message}`)
     res.status(400).json({ message })
   }
 })
 
-// 确认审查并开始编码
+// Confirm review and start coding
 router.post('/projects/:id/confirm-review', (req, res) => {
-  log.api(`POST /projects/${req.params.id}/confirm-review — 确认审查并开始编码`)
+  log.api(`POST /projects/${req.params.id}/confirm-review — confirming review and starting coding`)
   try {
     agentService.confirmReview(req.params.id)
-    res.json({ message: '编码已启动' })
+    res.json({ message: 'Coding started' })
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '启动编码失败'
-    log.error(`确认审查失败 (${req.params.id}): ${message}`)
+    const message = err instanceof Error ? err.message : 'Failed to start coding'
+    log.error(`Confirm review failed (${req.params.id}): ${message}`)
     res.status(400).json({ message })
   }
 })

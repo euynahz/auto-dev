@@ -128,7 +128,7 @@ export function FeatureList({ features, featureAgentMap, reviewMode, onReviewSub
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="搜索 feature..."
+            placeholder="Search features..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-9 bg-secondary/30 border-transparent focus:border-primary/30 transition-colors"
@@ -140,7 +140,7 @@ export function FeatureList({ features, featureAgentMap, reviewMode, onReviewSub
               onClick={toggleSelectAll}
               className="px-2.5 py-1 text-xs rounded-md transition-all duration-200 cursor-pointer font-medium bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary shrink-0"
             >
-              {selectedFeatureIds.size === features.length ? '取消全选' : '全选'}
+              {selectedFeatureIds.size === features.length ? 'Deselect All' : 'Select All'}
             </button>
           )}
           {(['all', 'passed', 'in_progress', 'pending'] as const).map((f) => (
@@ -154,7 +154,7 @@ export function FeatureList({ features, featureAgentMap, reviewMode, onReviewSub
                   : 'bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary'
               )}
             >
-              {f === 'all' ? `全部 (${features.length})` : f === 'passed' ? `通过 (${passedCount})` : f === 'in_progress' ? `进行中 (${inProgressCount})` : `待做 (${features.length - passedCount - inProgressCount})`}
+              {f === 'all' ? `All (${features.length})` : f === 'passed' ? `Passed (${passedCount})` : f === 'in_progress' ? `In Progress (${inProgressCount})` : `Pending (${features.length - passedCount - inProgressCount})`}
             </button>
           ))}
         </div>
@@ -170,11 +170,11 @@ export function FeatureList({ features, featureAgentMap, reviewMode, onReviewSub
                 <span />
                 <span />
               </div>
-              <span className="text-muted-foreground">暂无 Feature，启动 Agent 后将自动生成</span>
+              <span className="text-muted-foreground">No features yet. Start the Agent to auto-generate them.</span>
             </div>
           ) : grouped.size === 0 ? (
             <div className="text-center text-muted-foreground py-8 text-sm animate-fade-in">
-              没有匹配的结果
+              No matching results
             </div>
           ) : (
             Array.from(grouped.entries()).map(([category, items]) => {
@@ -245,12 +245,12 @@ export function FeatureList({ features, featureAgentMap, reviewMode, onReviewSub
                               )}
                               {isInProgress && isProjectRunning && (
                                 <Badge variant="default" className="text-[10px] shrink-0 animate-pulse">
-                                  {claimedByAgent != null ? `A${claimedByAgent}` : '处理中'}
+                                  {claimedByAgent != null ? `A${claimedByAgent}` : 'Processing'}
                                 </Badge>
                               )}
                               {!feature.passes && feature.failCount && feature.failCount > 0 && (
                                 <span className="text-[10px] text-red-400 shrink-0 font-medium">
-                                  ⚠️ 失败 {feature.failCount} 次
+                                  ⚠️ Failed {feature.failCount} times
                                 </span>
                               )}
                             </button>
@@ -282,10 +282,10 @@ export function FeatureList({ features, featureAgentMap, reviewMode, onReviewSub
       {reviewMode && features.length > 0 && (
         <div className="p-3 border-t border-border space-y-2 shrink-0">
           <div className="text-xs text-muted-foreground">
-            已选 <span className="font-medium text-foreground">{selectedFeatureIds.size}</span> 个 Feature
+            Selected <span className="font-medium text-foreground">{selectedFeatureIds.size}</span> features
           </div>
           <Textarea
-            placeholder="输入修改指令，例如：将这些 Feature 拆分为更细粒度的任务..."
+            placeholder="Enter modification instructions, e.g.: Split these features into more granular tasks..."
             value={reviewInstruction}
             onChange={(e) => setReviewInstruction(e.target.value)}
             rows={3}
@@ -298,7 +298,7 @@ export function FeatureList({ features, featureAgentMap, reviewMode, onReviewSub
             className="w-full gap-1.5 cursor-pointer"
           >
             {reviewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            AI 修改
+            AI Modify
           </Button>
         </div>
       )}

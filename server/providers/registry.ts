@@ -3,38 +3,38 @@ import { claudeProvider } from './claude.js'
 import { codexProvider } from './codex.js'
 import { opencodeProvider } from './opencode.js'
 
-// ===== Provider 注册表 =====
+// ===== Provider Registry =====
 
 const providers = new Map<string, AgentProvider>()
 
-// 内置 providers
+// Built-in providers
 providers.set('claude', claudeProvider)
 providers.set('codex', codexProvider)
 providers.set('opencode', opencodeProvider)
 
-/** 获取 provider，不存在则返回 undefined */
+/** Get provider, returns undefined if not found */
 export function getProvider(name: string): AgentProvider | undefined {
   return providers.get(name)
 }
 
-/** 获取 provider，不存在则抛错 */
+/** Get provider, throws if not found */
 export function requireProvider(name: string): AgentProvider {
   const p = providers.get(name)
   if (!p) throw new Error(`Unknown provider: ${name}. Available: ${listProviders().join(', ')}`)
   return p
 }
 
-/** 注册自定义 provider */
+/** Register custom provider */
 export function registerProvider(provider: AgentProvider): void {
   providers.set(provider.name, provider)
 }
 
-/** 列出所有已注册 provider 名称 */
+/** List all registered provider names */
 export function listProviders(): string[] {
   return Array.from(providers.keys())
 }
 
-/** 获取所有 provider 的摘要信息（给前端用） */
+/** Get summary info for all providers (for frontend) */
 export function getProviderSummaries(): Array<{
   name: string
   displayName: string

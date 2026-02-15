@@ -95,7 +95,7 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
       setName(''); setDirPath(''); setTaskPrompt(''); setError(''); setNameManuallySet(false)
       navigate(`/project/${project.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '导入失败')
+      setError(err instanceof Error ? err.message : 'Import failed')
     } finally {
       setLoading(false)
     }
@@ -112,15 +112,15 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
             <div>
               <DialogTitle className="flex items-center gap-2">
                 <FolderOpen className="h-5 w-5" />
-                导入已有项目
+                Import Existing Project
               </DialogTitle>
-              <DialogDescription>导入本地已有的项目目录，AI Agent 将分析项目结构并自动开发</DialogDescription>
+              <DialogDescription>Import a local project directory. The AI Agent will analyze the project structure and develop automatically.</DialogDescription>
             </div>
             <div className="flex items-center gap-1 bg-secondary/50 rounded-lg p-0.5 mr-6">
-              <button onClick={() => setLayout('vertical')} className={cn('p-1.5 rounded-md transition-colors cursor-pointer', layout === 'vertical' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')} title="竖向布局">
+              <button onClick={() => setLayout('vertical')} className={cn('p-1.5 rounded-md transition-colors cursor-pointer', layout === 'vertical' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')} title="Vertical Layout">
                 <Rows3 className="h-3.5 w-3.5" />
               </button>
-              <button onClick={() => setLayout('horizontal')} className={cn('p-1.5 rounded-md transition-colors cursor-pointer', layout === 'horizontal' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')} title="横向布局">
+              <button onClick={() => setLayout('horizontal')} className={cn('p-1.5 rounded-md transition-colors cursor-pointer', layout === 'horizontal' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')} title="Horizontal Layout">
                 <Columns3 className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -130,20 +130,20 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
         <div className={cn(isHorizontal ? 'flex gap-6' : 'space-y-4', 'py-4')}>
           <div className={cn(isHorizontal ? 'w-1/2 space-y-4' : 'space-y-4')}>
             <div className="space-y-2">
-              <label className="text-sm font-medium">本地目录路径</label>
-              <Input placeholder="例如：/home/user/projects/my-project" value={dirPath} onChange={(e) => handleDirPathChange(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Agent 将直接在此目录下工作，不会复制文件</p>
+              <label className="text-sm font-medium">Local Directory Path</label>
+              <Input placeholder="e.g. /home/user/projects/my-project" value={dirPath} onChange={(e) => handleDirPathChange(e.target.value)} />
+              <p className="text-xs text-muted-foreground">The Agent will work directly in this directory without copying files.</p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">项目名称</label>
-              <Input placeholder="粘贴路径后自动提取" value={name} onChange={(e) => handleNameChange(e.target.value)} />
+              <label className="text-sm font-medium">Project Name</label>
+              <Input placeholder="Auto-extracted from path" value={name} onChange={(e) => handleNameChange(e.target.value)} />
             </div>
 
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={reviewBeforeCoding} onChange={(e) => setReviewBeforeCoding(e.target.checked)} className="accent-primary" />
-              <span className="text-sm font-medium">初始化后审查任务列表</span>
-              <span className="text-xs text-muted-foreground">— 生成后先审查再编码</span>
+              <span className="text-sm font-medium">Review task list after initialization</span>
+              <span className="text-xs text-muted-foreground">— Review before coding starts</span>
             </label>
 
             {error && <div className="text-sm text-red-400 bg-red-400/10 rounded-md px-3 py-2">{error}</div>}
@@ -151,7 +151,7 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
             {!isHorizontal && (
               <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                 <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', !showAdvanced && '-rotate-90')} />
-                高级选项
+                Advanced Options
               </button>
             )}
 
@@ -166,19 +166,19 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
 
                 {caps?.modelSelection && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">模型</label>
-                    <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={currentProvider?.defaultModel || '默认模型'} />
+                    <label className="text-sm font-medium">Model</label>
+                    <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={currentProvider?.defaultModel || 'Default model'} />
                   </div>
                 )}
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">{useAgentTeams ? '建议的并行 Agent 数量' : '并发 Agent 数量'}</label>
+                  <label className="text-sm font-medium">{useAgentTeams ? 'Suggested Parallel Agent Count' : 'Concurrent Agent Count'}</label>
                   <div className="flex items-center gap-3">
                     <input type="range" min={1} max={8} value={concurrency} onChange={(e) => setConcurrency(Number(e.target.value))} className="flex-1 accent-primary" />
                     <span className="text-sm font-mono w-6 text-center">{concurrency}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {useAgentTeams ? 'Agent Teams 模式下，AI 将自主决定实际并行数量' : '多个 Agent 将在独立 git 分支上并行开发不同 feature'}
+                    {useAgentTeams ? 'In Agent Teams mode, the AI will autonomously decide the actual parallelism' : 'Multiple Agents will develop different features in parallel on separate git branches'}
                   </p>
                 </div>
 
@@ -186,17 +186,17 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={useAgentTeams} onChange={(e) => setUseAgentTeams(e.target.checked)} className="accent-primary" />
-                      <span className="text-sm font-medium">Agent Teams 模式</span>
+                      <span className="text-sm font-medium">Agent Teams Mode</span>
                     </label>
-                    <p className="text-xs text-muted-foreground">启用后，系统只启动一个 AI 会话，由 AI 内部自主协调多个子 Agent 完成全流程开发</p>
+                    <p className="text-xs text-muted-foreground">When enabled, the system launches a single AI session that internally coordinates multiple sub-Agents for end-to-end development</p>
                   </div>
                 )}
 
                 {caps?.systemPrompt && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">系统提示词（可选）</label>
-                    <Textarea placeholder="对所有 Agent 生效的额外指令，如编码规范、技术栈偏好等..." value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={3} className="resize-none" />
-                    <p className="text-xs text-muted-foreground">通过 --system-prompt 注入，所有 Agent Session 均生效</p>
+                    <label className="text-sm font-medium">System Prompt (optional)</label>
+                    <Textarea placeholder="Additional instructions for all Agents, e.g. coding standards, tech stack preferences..." value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={3} className="resize-none" />
+                    <p className="text-xs text-muted-foreground">Injected via --system-prompt, applies to all Agent sessions</p>
                   </div>
                 )}
 
@@ -208,21 +208,21 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
           </div>
 
           <div className={cn(isHorizontal ? 'w-1/2' : '', 'space-y-2')}>
-            <label className="text-sm font-medium">任务提示词</label>
+            <label className="text-sm font-medium">Task Prompt</label>
             <Textarea
-              placeholder={"描述你希望 AI Agent 对这个项目做什么，例如：\n\n• 参考已有代码，添加用户登录功能\n• 重构 API 层，改用 RESTful 风格\n• 修复 issue #42 中描述的 bug\n\n留空则由 AI 根据项目文件自动分析"}
+              placeholder={"Describe what you want the AI Agent to do with this project, e.g.:\n\n• Add user login based on existing code\n• Refactor the API layer to RESTful style\n• Fix the bug described in issue #42\n\nLeave empty for AI to auto-analyze from project files"}
               value={taskPrompt} onChange={(e) => setTaskPrompt(e.target.value)}
               rows={isHorizontal ? 14 : 6} className="resize-none"
             />
-            <p className="text-xs text-muted-foreground">告诉 AI Agent 你的目标，否则它可能无法理解你想做什么</p>
+            <p className="text-xs text-muted-foreground">Tell the AI Agent your goal, otherwise it may not understand what you want to do</p>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="cursor-pointer">取消</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="cursor-pointer">Cancel</Button>
           <Button onClick={handleImport} disabled={loading || !name.trim() || !dirPath.trim()} className="cursor-pointer">
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            导入项目
+            Import Project
           </Button>
         </DialogFooter>
       </DialogContent>

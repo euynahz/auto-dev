@@ -60,7 +60,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <button
               onClick={toggle}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
-              title={dark ? '切换亮色模式' : '切换暗色模式'}
+              title={dark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -72,7 +72,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                   </span>
                   <Wifi className="h-3 w-3 text-emerald-400" />
-                  <span className="text-emerald-400 font-medium">已连接</span>
+                  <span className="text-emerald-400 font-medium">Connected</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20">
@@ -80,7 +80,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
                   </span>
                   <WifiOff className="h-3 w-3 text-red-400" />
-                  <span className="text-red-400 font-medium">断开</span>
+                  <span className="text-red-400 font-medium">Disconnected</span>
                 </div>
               )}
             </div>

@@ -8,12 +8,12 @@ describe('state-machine transition', () => {
     const startable: ProjectStatus[] = ['idle', 'paused', 'completed', 'error']
 
     for (const status of startable) {
-      it(`${status} + START (未初始化) → initializing`, () => {
+      it(`${status} + START (not initialized) → initializing`, () => {
         expect(transition(status, { type: 'START', hasInitialized: false }))
           .toEqual({ newStatus: 'initializing' })
       })
 
-      it(`${status} + START (已初始化) → running`, () => {
+      it(`${status} + START (initialized) → running`, () => {
         expect(transition(status, { type: 'START', hasInitialized: true }))
           .toEqual({ newStatus: 'running' })
       })
@@ -21,7 +21,7 @@ describe('state-machine transition', () => {
 
     const notStartable: ProjectStatus[] = ['initializing', 'reviewing', 'running']
     for (const status of notStartable) {
-      it(`${status} + START → 不转换`, () => {
+      it(`${status} + START → no transition`, () => {
         expect(transition(status, { type: 'START', hasInitialized: false }))
           .toEqual({ newStatus: null })
       })
@@ -30,22 +30,22 @@ describe('state-machine transition', () => {
 
   // ===== INIT_COMPLETE =====
   describe('INIT_COMPLETE', () => {
-    it('initializing + INIT_COMPLETE (有features, reviewMode) → reviewing', () => {
+    it('initializing + INIT_COMPLETE (has features, reviewMode) → reviewing', () => {
       expect(transition('initializing', { type: 'INIT_COMPLETE', hasFeatures: true, reviewMode: true }))
         .toEqual({ newStatus: 'reviewing' })
     })
 
-    it('initializing + INIT_COMPLETE (有features, !reviewMode) → running', () => {
+    it('initializing + INIT_COMPLETE (has features, !reviewMode) → running', () => {
       expect(transition('initializing', { type: 'INIT_COMPLETE', hasFeatures: true, reviewMode: false }))
         .toEqual({ newStatus: 'running' })
     })
 
-    it('initializing + INIT_COMPLETE (无features) → 不转换', () => {
+    it('initializing + INIT_COMPLETE (no features) → no transition', () => {
       expect(transition('initializing', { type: 'INIT_COMPLETE', hasFeatures: false, reviewMode: false }))
         .toEqual({ newStatus: null })
     })
 
-    it('running + INIT_COMPLETE → 不转换', () => {
+    it('running + INIT_COMPLETE → no transition', () => {
       expect(transition('running', { type: 'INIT_COMPLETE', hasFeatures: true, reviewMode: false }))
         .toEqual({ newStatus: null })
     })
@@ -58,7 +58,7 @@ describe('state-machine transition', () => {
         .toEqual({ newStatus: 'error', stopWatcher: true })
     })
 
-    it('running + INIT_FAILED → 不转换', () => {
+    it('running + INIT_FAILED → no transition', () => {
       expect(transition('running', { type: 'INIT_FAILED' }))
         .toEqual({ newStatus: null })
     })
@@ -71,12 +71,12 @@ describe('state-machine transition', () => {
         .toEqual({ newStatus: 'running' })
     })
 
-    it('running + REVIEW_CONFIRMED → 不转换', () => {
+    it('running + REVIEW_CONFIRMED → no transition', () => {
       expect(transition('running', { type: 'REVIEW_CONFIRMED' }))
         .toEqual({ newStatus: null })
     })
 
-    it('idle + REVIEW_CONFIRMED → 不转换', () => {
+    it('idle + REVIEW_CONFIRMED → no transition', () => {
       expect(transition('idle', { type: 'REVIEW_CONFIRMED' }))
         .toEqual({ newStatus: null })
     })
@@ -89,12 +89,12 @@ describe('state-machine transition', () => {
         .toEqual({ newStatus: 'completed', stopWatcher: true })
     })
 
-    it('running + SESSION_COMPLETE (!allDone) → 不转换（继续下一个）', () => {
+    it('running + SESSION_COMPLETE (!allDone) → no transition（continue next）', () => {
       expect(transition('running', { type: 'SESSION_COMPLETE', allDone: false }))
         .toEqual({ newStatus: null })
     })
 
-    it('initializing + SESSION_COMPLETE → 不转换', () => {
+    it('initializing + SESSION_COMPLETE → no transition', () => {
       expect(transition('initializing', { type: 'SESSION_COMPLETE', allDone: true }))
         .toEqual({ newStatus: null })
     })
@@ -102,17 +102,17 @@ describe('state-machine transition', () => {
 
   // ===== SESSION_FAILED =====
   describe('SESSION_FAILED', () => {
-    it('running + SESSION_FAILED (!allAgentsStopped) → 不转换（继续重试）', () => {
+    it('running + SESSION_FAILED (!allAgentsStopped) → no transition(continue retry)', () => {
       expect(transition('running', { type: 'SESSION_FAILED', allAgentsStopped: false }))
         .toEqual({ newStatus: null })
     })
 
-    it('running + SESSION_FAILED (allAgentsStopped) → 不转换', () => {
+    it('running + SESSION_FAILED (allAgentsStopped) → no transition', () => {
       expect(transition('running', { type: 'SESSION_FAILED', allAgentsStopped: true }))
         .toEqual({ newStatus: null })
     })
 
-    it('idle + SESSION_FAILED → 不转换', () => {
+    it('idle + SESSION_FAILED → no transition', () => {
       expect(transition('idle', { type: 'SESSION_FAILED', allAgentsStopped: false }))
         .toEqual({ newStatus: null })
     })
@@ -129,7 +129,7 @@ describe('state-machine transition', () => {
       })
     }
 
-    it('running + STOP (!allAgentsStopped) → 不转换', () => {
+    it('running + STOP (!allAgentsStopped) → no transition', () => {
       expect(transition('running', { type: 'STOP', allAgentsStopped: false }))
         .toEqual({ newStatus: null })
     })

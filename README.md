@@ -1,164 +1,164 @@
 # AutoDev
 
-AI 全自动开发平台，支持多 AI 工具后端。输入需求或导入已有项目，AI Agent 自动拆解为功能点并逐个实现，支持多 Agent 并行开发。
+A fully autonomous AI-powered development platform with multi-provider support. Describe your requirements or import an existing project — AI Agents automatically decompose it into features and implement them one by one, with support for parallel multi-agent development.
 
 ![Screenshot](./assets/screenshot.png)
 
-## 项目特点
+## Highlights
 
-### 🔌 Provider 插件化架构
+### 🔌 Plugin-Based Provider Architecture
 
-底层 AI 工具完全解耦，通过 Provider 接口适配不同 AI 编码工具：
+The underlying AI tooling is fully decoupled, adapting to different AI coding tools through a unified Provider interface:
 
-- **AgentProvider 接口** — 统一的 `buildArgs` / `parseLine` / `isSuccessExit` / `capabilities` 声明
-- **AgentEvent 标准化** — 所有 provider 输出统一转为 `text` / `thinking` / `tool_use` / `system` / `error` 事件
-- **内置 Claude Code** — 默认 provider，完整支持 `stream-json` 流式输出解析
-- **零代码扩展** — 实现 `AgentProvider` 接口 + `registerProvider()` 注册即可接入新工具
-- **能力声明** — 每个 provider 声明自己支持的功能（streaming / maxTurns / systemPrompt / agentTeams / modelSelection / dangerousMode），系统自动适配
-- **`GET /api/providers`** — 前端动态获取可用 provider 列表及能力，UI 自动适配
+- **AgentProvider Interface** — Standardized `buildArgs` / `parseLine` / `isSuccessExit` / `capabilities` declarations
+- **AgentEvent Normalization** — All provider outputs are converted into unified `text` / `thinking` / `tool_use` / `system` / `error` events
+- **Built-in Claude Code** — Default provider with full `stream-json` streaming output parsing
+- **Zero-Code Extension** — Implement the `AgentProvider` interface + call `registerProvider()` to plug in a new tool
+- **Capability Declaration** — Each provider declares its supported features (streaming / maxTurns / systemPrompt / agentTeams / modelSelection / dangerousMode); the system adapts automatically
+- **`GET /api/providers`** — Frontend dynamically fetches available providers and their capabilities; UI adapts on the fly
 
-### 🧠 基于 Anthropic 长时间 Agent 研究
+### 🧠 Based on Anthropic's Long-Running Agent Research
 
-实现了 Anthropic 论文 [Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) 提出的核心模式：
+Implements the core patterns from Anthropic's paper [Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents):
 
-- **双 Agent 架构** — Initializer Agent 拆解需求生成 Feature List，Coding Agent 逐个实现
-- **feature_list.json 为唯一真相源** — JSON 格式，只有 `passes` 字段可被修改，杜绝 Agent 篡改或遗漏需求
-- **增量推进** — 每个 Session 只做一个 Feature，做完 commit，保证代码始终可合并
-- **上下文桥接** — 通过 `claude-progress.txt` + `git log` 让新 Session 快速了解项目状态，解决跨上下文窗口的记忆断裂问题
+- **Dual-Agent Architecture** — An Initializer Agent decomposes requirements into a Feature List; Coding Agents implement them one by one
+- **feature_list.json as Single Source of Truth** — JSON format where only the `passes` field can be modified, preventing agents from tampering with or omitting requirements
+- **Incremental Progress** — Each session tackles one feature, commits on completion, ensuring the codebase is always mergeable
+- **Context Bridging** — Uses `claude-progress.txt` + `git log` to bring new sessions up to speed on project state, solving the memory fragmentation problem across context windows
 
-### 🔀 多 Agent 并行开发
+### 🔀 Multi-Agent Parallel Development
 
-不止于 Anthropic 原始示例的单 Agent 串行模式，扩展支持多 Agent 并行：
+Goes beyond Anthropic's original single-agent sequential approach with full parallel support:
 
-- 每个 Agent 在独立 Git 分支（`agent-{index}/feature-{featureId}`）上工作，互不干扰
-- `claimedFeatures` Map 原子化分配 Feature，保证不会有两个 Agent 抢同一个任务
-- Git 操作通过 Promise 队列串行执行，避免并发冲突
-- 完成后自动 `git merge --no-ff` 回 main，冲突时标记需人工处理
-- `concurrency = 1` 时退化为串行模式，完全向后兼容
+- Each agent works on an isolated Git branch (`agent-{index}/feature-{featureId}`), with zero interference
+- `claimedFeatures` Map atomically assigns features, guaranteeing no two agents claim the same task
+- Git operations are serialized through a Promise queue to avoid concurrency conflicts
+- Completed features are automatically merged back to main via `git merge --no-ff`; conflicts are flagged for manual resolution
+- Setting `concurrency = 1` gracefully degrades to sequential mode, fully backward-compatible
 
-### 🤖 Agent Teams 模式
+### 🤖 Agent Teams Mode
 
-第三种执行模式 — 系统只启动一个 AI 会话，由 AI 内部使用 Agent Teams 功能自主协调多个子 Agent：
+A third execution mode — the system launches a single AI session, and the AI internally uses Agent Teams to coordinate multiple sub-agents:
 
-- 协调逻辑从系统侧转移到 AI 内部，AI 自主决定任务分配和并行策略
-- 全流程自动化：理解需求 → 规划架构 → 生成 Feature List → 初始化项目 → 并行开发 → 收尾
-- 所有 Agent 在 main 分支工作，通过频繁提交避免冲突
-- 创建项目时勾选「Agent Teams 模式」即可启用
-- 需要 provider 支持 `agentTeams` 能力（目前仅 Claude Code 支持）
+- Coordination logic shifts from the system to the AI itself; the AI autonomously decides task allocation and parallelism strategy
+- Fully automated end-to-end: understand requirements → plan architecture → generate Feature List → initialize project → parallel development → wrap up
+- All agents work on the main branch, avoiding conflicts through frequent commits
+- Enable by checking "Agent Teams Mode" when creating a project
+- Requires provider support for the `agentTeams` capability (currently Claude Code only)
 
-### 🎯 项目级系统提示词
+### 🎯 Project-Level System Prompts
 
-为每个项目配置自定义 System Prompt，对所有 Agent（initializer、coding、parallel-coding、agent-teams、append-initializer）统一生效：
+Configure a custom system prompt for each project, applied uniformly across all agents (initializer, coding, parallel-coding, agent-teams, append-initializer):
 
-- 创建或导入项目时在高级选项中填写，也可在项目详情页随时修改
-- 通过 Claude CLI 的 `--system-prompt` 参数注入，与任务 prompt 分离
-- 修改后下个 Session 生效，不中断当前运行的 Session
-- 适用于注入编码规范、技术栈偏好、语言要求等项目级约束
+- Set during project creation/import in advanced options, or modify anytime from the project detail page
+- Injected via the Claude CLI `--system-prompt` flag, kept separate from the task prompt
+- Changes take effect on the next session without interrupting any currently running session
+- Ideal for injecting coding standards, tech stack preferences, language requirements, and other project-level constraints
 
-### 📋 任务列表审查模式
+### 📋 Task List Review Mode
 
-创建项目时可选择「初始化后审查任务列表」，让你在 AI 开始编码前先审查和调整 Feature List：
+Optionally enable "Review task list after initialization" when creating a project, letting you review and adjust the Feature List before coding begins:
 
-- 勾选后，Initializer Agent 生成 Feature List 后项目进入 `reviewing` 状态，不会自动开始编码
-- 审查界面支持勾选单个或全选 Feature，输入修改指令后点击「AI 修改」触发 Claude 对选中任务进行调整
-- 支持修改描述、调整步骤、拆分/合并/删除 Feature
-- 确认无误后点击「确认并开始编码」，项目才会正式进入编码阶段
+- When enabled, the Initializer Agent generates the Feature List and the project enters a `reviewing` state — coding does not start automatically
+- The review UI supports selecting individual or all features; enter modification instructions and click "AI Modify" to have Claude adjust the selected tasks
+- Supports editing descriptions, adjusting steps, splitting/merging/deleting features
+- Click "Confirm and Start Coding" to officially begin the coding phase
 
-### 📦 一键导入已有项目
+### 📦 One-Click Import of Existing Projects
 
-不只是从零创建，还能导入已有代码仓库：
+Not just for greenfield — import existing code repositories too:
 
-- 自动扫描目录结构、README.md、CLAUDE.md、docs/*.md、package.json
-- 将扫描内容拼接为项目描述（spec），直接指向原目录，不复制文件
-- 导入后启动 Agent 即可开始自动开发
+- Automatically scans directory structure, README.md, CLAUDE.md, docs/*.md, package.json
+- Assembles scanned content into a project spec, pointing directly at the original directory without copying files
+- After import, start the agent to begin autonomous development immediately
 
-### 🖥️ 实时 Web 监控面板
+### 🖥️ Real-Time Web Monitoring Dashboard
 
-全程可视化，不是黑盒：
+Full visibility throughout — no black boxes:
 
-- Dashboard 项目卡片 + 进度条，一眼看清所有项目状态
-- 项目详情页：左侧 Feature List（按分类分组，✅/❌ 状态，🔄 标识正在处理的 Agent），右侧终端风格实时日志
-- 并行模式下按 Agent Tab 切换日志，顶部显示活跃 Agent 数量
-- **Session 甘特图** — 每个 Session 用横条表示，宽度按耗时比例缩放，一眼看出效率分布；横条显示任务描述（自动从日志推断 Feature）
-- **Session 日志查看器** — 点击「查看」按钮侧拉显示 Claude 原始输出，stream-json 解析为彩色分类展示（assistant / tool_use / error 等），支持日志文件已删除的 404 处理
-- **运行时追加需求** — 项目运行中可随时追加新需求，系统自动拆解为 Feature 并追加到任务队列
-- 各面板支持全屏切换，Feature List / Agent Log / Session 历史均可独立全屏查看
-- WebSocket 推送，零延迟更新
+- Dashboard with project cards + progress bars for an at-a-glance view of all project statuses
+- Project detail page: Feature List on the left (grouped by category, ✅/❌ status, 🔄 indicating the active agent), real-time terminal-style logs on the right
+- In parallel mode, switch logs by Agent tab; the header shows the number of active agents
+- **Session Gantt Chart** — Each session is represented as a horizontal bar, scaled by duration, for instant efficiency insights; bars display task descriptions (features auto-inferred from logs)
+- **Session Log Viewer** — Click "View" to open a side panel with raw Claude output, parsed from stream-json into color-coded categories (assistant / tool_use / error, etc.), with graceful 404 handling for deleted log files
+- **Runtime Requirement Appending** — Append new requirements while the project is running; the system automatically decomposes them into features and adds them to the task queue
+- All panels support fullscreen toggle; Feature List, Agent Log, and Session History can each be viewed independently in fullscreen
+- WebSocket push updates with zero-latency refresh
 
-### 🤝 人机协作
+### 🤝 Human-in-the-Loop Collaboration
 
-Agent 不是孤岛，遇到问题会主动求助：
+Agents aren't isolated — they proactively ask for help when stuck:
 
-- Agent 输出 `[HUMAN_HELP] 问题描述` 时，系统自动捕获并推送到前端
-- 用户回复写入 `.human-response.md`，Agent 下次启动时读取并继续
-- 适用于缺失配置、需求不清晰、需要人工决策等场景
+- When an agent outputs `[HUMAN_HELP] problem description`, the system automatically captures it and pushes a notification to the frontend
+- User responses are written to `.human-response.md`; the agent reads it on next startup and continues
+- Useful for missing configurations, ambiguous requirements, or decisions that need human judgment
 
-### 🛡️ 健壮性设计
+### 🛡️ Production-Grade Robustness
 
-面向生产环境的可靠性考量：
+Reliability designed for real-world use:
 
-- **Token 认证** — `AUTODEV_TOKEN` 环境变量控制 API 和 WebSocket 访问（Bearer header / query param），不设则跳过
-- **路径沙箱** — `isPathSafe()` 限制 checkDir / importProject / raw-log 路径范围（home / tmp / cwd），防止路径穿越
-- **显式状态机** — `state-machine.ts` 定义所有合法状态转换，替代散落的 if-else，杜绝非法状态
-- **墙钟超时** — 30 分钟无 stdout 输出自动 SIGTERM + SIGKILL，防止僵尸进程
-- **重试上限** — 单个 Feature 最多重试 3 次，超限自动跳过并标记，防止无限循环
-- **Feature 生命周期** — `failCount` / `lastAttemptAt` 追踪失败历史，`inProgress` 系统级管理（非 Agent 自行设置）
-- **claimedFeatures 持久化** — 写入 `claimed.json`，服务重启后自动恢复认领状态
-- **进程恢复** — 服务重启时自动检测孤儿进程，通过持久化的 PID 清理并重置状态
-- **WebSocket 心跳** — 服务端 30s ping/pong，僵尸连接自动 terminate
-- **指数退避重连** — 客户端断线后 3s → 6s → 12s → 24s → 30s cap，重连后自动刷新状态
-- **日志持久化** — JSONL append-only 格式，5000 条自动截断，旧 `logs.json` 自动迁移
-- **智能日志过滤** — JSON 格式的思考过程解析为可读摘要实时展示（不持久化），减少噪音
-- **前端性能优化** — `React.memo` + `content-visibility: auto` 实现浏览器原生虚拟化，日志上限 3000 条防止内存溢出
-- **启动心跳** — 15 秒无输出时显示等待提示，避免用户以为卡死
-- **优雅停止** — SIGTERM → 等待 5s → SIGKILL，确保进程不残留
+- **Token Authentication** — `AUTODEV_TOKEN` environment variable controls API and WebSocket access (Bearer header / query param); omit to skip auth
+- **Path Sandboxing** — `isPathSafe()` restricts checkDir / importProject / raw-log paths to home / tmp / cwd, preventing path traversal
+- **Explicit State Machine** — `state-machine.ts` defines all legal state transitions, replacing scattered if-else logic and eliminating illegal states
+- **Wall-Clock Timeout** — 30 minutes with no stdout output triggers automatic SIGTERM + SIGKILL, preventing zombie processes
+- **Retry Limits** — Each feature retries up to 3 times; exceeded limits auto-skip and flag the feature, preventing infinite loops
+- **Feature Lifecycle** — `failCount` / `lastAttemptAt` track failure history; `inProgress` is managed at the system level (not by agents)
+- **claimedFeatures Persistence** — Written to `claimed.json`; claim state is automatically restored on service restart
+- **Process Recovery** — On restart, the service detects orphan processes, cleans up via persisted PIDs, and resets state
+- **WebSocket Heartbeat** — Server-side 30s ping/pong; zombie connections are automatically terminated
+- **Exponential Backoff Reconnection** — Client reconnects at 3s → 6s → 12s → 24s → 30s cap; state is auto-refreshed on reconnect
+- **Log Persistence** — JSONL append-only format with auto-truncation at 5,000 entries; legacy `logs.json` files are auto-migrated
+- **Smart Log Filtering** — JSON-formatted thinking processes are parsed into readable summaries for real-time display (not persisted), reducing noise
+- **Frontend Performance** — `React.memo` + `content-visibility: auto` for browser-native virtualization; log cap at 3,000 entries to prevent memory overflow
+- **Startup Heartbeat** — Shows a waiting indicator after 15 seconds of no output, so users don't think it's frozen
+- **Graceful Shutdown** — SIGTERM → wait 5s → SIGKILL, ensuring no lingering processes
 
 ---
 
-## 技术栈
+## Tech Stack
 
-| 层 | 技术 |
+| Layer | Technology |
 |---|------|
-| 前端 | React 19 + TypeScript + Vite + Tailwind CSS v4 + Radix UI |
-| 状态管理 | Zustand |
-| 后端 | Express + WebSocket (ws) |
-| AI 引擎 | Provider 插件化（内置 Claude Code CLI，可扩展 Codex / Gemini / Aider 等） |
-| 状态管理（后端） | 显式状态机（state-machine.ts） |
-| 测试 | Vitest（61 tests） |
-| 版本控制 | Git（分支隔离 + 自动合并） |
+| Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 + Radix UI |
+| State Management | Zustand |
+| Backend | Express + WebSocket (ws) |
+| AI Engine | Plugin-based providers (built-in Claude Code CLI, extensible to Codex / Gemini / Aider, etc.) |
+| State Management (Backend) | Explicit state machine (state-machine.ts) |
+| Testing | Vitest (61 tests) |
+| Version Control | Git (branch isolation + auto-merge) |
 
-## 快速开始
+## Quick Start
 
 ```bash
-# 安装依赖
+# Install dependencies
 npm install
 
-# 同时启动前端和后端
+# Start frontend and backend simultaneously
 npm start
 ```
 
-- 前端：`http://localhost:5173`
-- 后端 API：`http://localhost:3001`
-- WebSocket：`ws://localhost:3001/ws`
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:3001`
+- WebSocket: `ws://localhost:3001/ws`
 
-前提条件：已安装并配置好至少一个 AI 编码工具（默认 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)）。
+Prerequisites: At least one AI coding tool installed and configured (default: [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)).
 
-### 安全配置（可选）
+### Security Configuration (Optional)
 
 ```bash
-# 设置 API Token（不设则跳过认证）
+# Set API token (omit to skip authentication)
 export AUTODEV_TOKEN=your-secret-token
 ```
 
-### 测试
+### Testing
 
 ```bash
-npm test          # 运行 61 个单元测试
+npm test          # Run 61 unit tests
 ```
 
-## 扩展 Provider
+## Extending Providers
 
-实现 `AgentProvider` 接口即可接入新的 AI 编码工具：
+Implement the `AgentProvider` interface to plug in a new AI coding tool:
 
 ```typescript
 // server/providers/codex.ts
@@ -180,7 +180,7 @@ export const codexProvider: AgentProvider = {
     return ['--json', '-p', ctx.prompt, '--model', ctx.model]
   },
   parseLine(line) {
-    // 解析 codex 的输出格式 → 标准化 AgentEvent
+    // Parse codex output format → normalized AgentEvent
     const event = JSON.parse(line)
     if (event.type === 'message') return { type: 'text', content: event.content }
     return { type: 'ignore' }
@@ -189,110 +189,113 @@ export const codexProvider: AgentProvider = {
 }
 ```
 
-然后在 `registry.ts` 中注册：
+Then register it in `registry.ts`:
 
 ```typescript
 import { codexProvider } from './codex.js'
 registerProvider(codexProvider)
 ```
 
-前端 Provider 选择器自动出现新选项，零 UI 改动。
+The frontend provider selector automatically picks up the new option — zero UI changes needed.
 
-## 项目结构
+## Project Structure
 
 ```
-├── server/                    # 后端服务
-│   ├── index.ts               # Express + WebSocket 入口（含心跳 + token 认证）
-│   ├── routes/api.ts          # REST API 路由（含 auth 中间件 + 路径沙箱）
-│   ├── providers/             # AI Provider 插件层
-│   │   ├── types.ts           # AgentProvider 接口 + AgentEvent 标准化事件
-│   │   ├── claude.ts          # Claude Code CLI 实现
-│   │   └── registry.ts        # Provider 注册表 + 查询 API
+├── server/                    # Backend service
+│   ├── index.ts               # Express + WebSocket entry (heartbeat + token auth)
+│   ├── routes/api.ts          # REST API routes (auth middleware + path sandboxing)
+│   ├── providers/             # AI Provider plugin layer
+│   │   ├── types.ts           # AgentProvider interface + AgentEvent normalized events
+│   │   ├── claude.ts          # Claude Code CLI implementation
+│   │   └── registry.ts        # Provider registry + query API
 │   ├── services/
-│   │   ├── agent.ts           # Agent 调度引擎（核心，provider-agnostic）
-│   │   ├── project.ts         # 项目 CRUD + Feature 同步 + 路径沙箱
-│   │   └── state-machine.ts   # 项目状态机（显式状态转换表）
+│   │   ├── agent.ts           # Agent scheduling engine (core, provider-agnostic)
+│   │   ├── project.ts         # Project CRUD + feature sync + path sandboxing
+│   │   └── state-machine.ts   # Project state machine (explicit transition table)
 │   ├── prompts/
-│   │   ├── initializer.md     # 初始化 Agent 提示词
-│   │   ├── append-initializer.md # 追加需求拆解提示词
-│   │   ├── coding.md          # 串行编码 Agent 提示词
-│   │   ├── coding-parallel.md # 并行编码 Agent 提示词
-│   │   └── agent-teams.md     # Agent Teams 全流程提示词
+│   │   ├── initializer.md     # Initializer Agent prompt
+│   │   ├── append-initializer.md # Append requirement decomposition prompt
+│   │   ├── coding.md          # Sequential coding Agent prompt
+│   │   ├── coding-parallel.md # Parallel coding Agent prompt
+│   │   └── agent-teams.md     # Agent Teams end-to-end prompt
 │   └── types.ts
-├── src/                       # 前端
+├── src/                       # Frontend
 │   ├── pages/
-│   │   ├── Dashboard.tsx      # 项目列表 + 创建/导入
-│   │   └── ProjectDetail.tsx  # 项目详情（Feature + 日志 + 时间线）
+│   │   ├── Dashboard.tsx      # Project list + create/import
+│   │   └── ProjectDetail.tsx  # Project detail (features + logs + timeline)
 │   ├── components/
-│   │   ├── ui/                # 基础 UI 组件（Badge, Card, Dialog, Sheet 等）
+│   │   ├── ui/                # Base UI components (Badge, Card, Dialog, Sheet, etc.)
 │   │   ├── project/           # CreateProjectDialog, ImportProjectDialog, FeatureList
 │   │   └── agent/             # AgentLog, SessionTimeline, HelpDialog
-│   ├── store/index.ts         # Zustand 全局状态
-│   ├── hooks/useWebSocket.ts  # WebSocket 连接管理（指数退避重连）
-│   └── lib/api.ts             # API 客户端
-└── .autodev-data/             # 运行时数据（自动创建）
-    ├── projects/              # 项目元数据 + Feature + Session + 日志（JSONL）
-    └── claude-logs/           # Agent 原始输出日志
+│   ├── store/index.ts         # Zustand global state
+│   ├── hooks/useWebSocket.ts  # WebSocket connection management (exponential backoff)
+│   └── lib/api.ts             # API client
+└── .autodev-data/             # Runtime data (auto-created)
+    ├── projects/              # Project metadata + features + sessions + logs (JSONL)
+    └── claude-logs/           # Raw agent output logs
 ```
 
 ## API
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 |------|------|------|
-| GET | `/api/providers` | 可用 AI Provider 列表及能力声明 |
-| GET | `/api/projects` | 项目列表 |
-| GET | `/api/projects/:id` | 项目详情 |
-| POST | `/api/projects` | 创建项目 |
-| POST | `/api/projects/import` | 导入已有项目 |
-| DELETE | `/api/projects/:id` | 删除项目 |
-| POST | `/api/projects/:id/start` | 启动 Agent |
-| POST | `/api/projects/:id/stop` | 停止 Agent |
-| GET | `/api/projects/:id/features` | Feature 列表 |
-| GET | `/api/projects/:id/sessions` | Session 历史 |
-| GET | `/api/projects/:id/sessions/:sid/raw-log` | Session 原始日志（纯文本） |
-| GET | `/api/projects/:id/logs` | 实时日志历史 |
-| GET | `/api/projects/:id/help-requests` | 待处理人工协助请求 |
-| POST | `/api/projects/:id/help-response` | 提交人工协助回复 |
-| PUT | `/api/projects/:id/system-prompt` | 更新系统提示词 |
-| POST | `/api/projects/:id/review-features` | 审查模式下 AI 修改选中 Feature |
-| POST | `/api/projects/:id/confirm-review` | 确认审查并开始编码 |
-| POST | `/api/projects/:id/append-spec` | 运行时追加需求 |
+| GET | `/api/providers` | List available AI providers and their capabilities |
+| GET | `/api/projects` | List projects |
+| GET | `/api/projects/:id` | Get project details |
+| POST | `/api/projects` | Create a project |
+| POST | `/api/projects/import` | Import an existing project |
+| DELETE | `/api/projects/:id` | Delete a project |
+| POST | `/api/projects/:id/start` | Start the agent |
+| POST | `/api/projects/:id/stop` | Stop the agent |
+| GET | `/api/projects/:id/features` | List features |
+| GET | `/api/projects/:id/sessions` | Get session history |
+| GET | `/api/projects/:id/sessions/:sid/raw-log` | Get raw session log (plain text) |
+| GET | `/api/projects/:id/logs` | Get real-time log history |
+| GET | `/api/projects/:id/help-requests` | Get pending human assistance requests |
+| POST | `/api/projects/:id/help-response` | Submit a human assistance response |
+| PUT | `/api/projects/:id/system-prompt` | Update the system prompt |
+| POST | `/api/projects/:id/review-features` | AI-modify selected features in review mode |
+| POST | `/api/projects/:id/confirm-review` | Confirm review and start coding |
+| POST | `/api/projects/:id/append-spec` | Append requirements at runtime |
 
-WebSocket `/ws` 推送消息类型：`log`、`status`、`progress`、`feature_update`、`features_sync`、`session_update`、`agent_count`、`human_help`
+WebSocket `/ws` push message types: `log`, `status`, `progress`, `feature_update`, `features_sync`, `session_update`, `agent_count`, `human_help`
 
-## AI Agent 协作流程
+## AI Agent Workflow
 
-### 总体架构
+### Overall Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│              用户输入需求 / 导入项目                    │
+│          User Input / Import Existing Project        │
 └──────────────────────┬──────────────────────────────┘
                        ▼
               ┌─────────────────┐
               │ Initializer Agent│  Session 1
               │                 │
-              │ • 读取 app_spec │
-              │ • 生成 feature  │
-              │   _list.json    │
-              │ • 创建 init.sh  │
+              │ • Read app_spec │
+              │ • Generate      │
+              │   feature_list  │
+              │   .json         │
+              │ • Create init.sh│
               │ • git init      │
               └────────┬────────┘
                        ▼
            ┌───────────────────────┐
            │  concurrency = 1 ?    │
            └───┬───────────────┬───┘
-            是 │               │ 否
+           Yes │               │ No
                ▼               ▼
         ┌────────────┐  ┌──────────────┐  ┌──────────────┐
-        │ 单 Agent   │  │ 多 Agent     │  │ Agent Teams  │
-        │ 串行模式    │  │ 并行模式      │  │ 自主协调模式  │
+        │ Single     │  │ Multi-Agent  │  │ Agent Teams  │
+        │ Agent      │  │ Parallel     │  │ Self-        │
+        │ Sequential │  │ Mode         │  │ Coordinated  │
         └────────────┘  └──────────────┘  └──────────────┘
                │               │                │
                └───────────────┼────────────────┘
                                ▼
                     ┌─────────────────────┐
-                    │   Provider 抽象层    │
+                    │  Provider Abstraction│
+                    │       Layer          │
                     │                     │
                     │  buildArgs()        │
                     │  parseLine()        │
@@ -307,11 +310,11 @@ WebSocket `/ws` 推送消息类型：`log`、`status`、`progress`、`feature_up
         └──────────┘   └──────────┘    └──────────┘
 ```
 
-> Agent Teams 模式在创建项目时勾选启用，跳过上述分支判断，直接启动单个全流程 Claude 会话。
+> Agent Teams mode is enabled by checking the option at project creation, bypassing the branching logic above and launching a single end-to-end Claude session.
 
-### 模式一：单 Agent 串行开发（concurrency = 1）
+### Mode 1: Single-Agent Sequential Development (concurrency = 1)
 
-一个 Coding Agent 在 `main` 分支上按优先级逐个完成 Feature。
+One Coding Agent works on the `main` branch, completing features one by one in priority order.
 
 ```
 Session 2          Session 3          Session 4
@@ -327,22 +330,22 @@ Session 2          Session 3          Session 4
   on main           on main           on main
 ```
 
-每个 Session 的 10 步流程：
+Each session follows a 10-step workflow:
 
-1. **获取方向** — `pwd` → 读 `claude-progress.txt` → 读 `feature_list.json` → `git log`
-2. **启动服务** — 运行 `init.sh` 或手动启动 dev server
-3. **验证回归** — 抽查 1-2 个已通过的 Feature，确认没有回归 bug
-4. **选择目标** — 从 feature_list.json 中选最高优先级的未完成 Feature
-5. **编码实现** — 写代码（前端 + 后端）
-6. **端到端测试** — 通过浏览器自动化验证功能
-7. **更新状态** — `passes: false → true`
-8. **提交代码** — `git add + commit`
-9. **更新进度** — 写入 `claude-progress.txt`
-10. **干净退出** — 确保无未提交变更
+1. **Orient** — `pwd` → read `claude-progress.txt` → read `feature_list.json` → `git log`
+2. **Start Services** — Run `init.sh` or manually start the dev server
+3. **Regression Check** — Spot-check 1–2 previously passing features to confirm no regressions
+4. **Select Target** — Pick the highest-priority incomplete feature from feature_list.json
+5. **Implement** — Write code (frontend + backend)
+6. **End-to-End Test** — Verify functionality via browser automation
+7. **Update Status** — `passes: false → true`
+8. **Commit** — `git add + commit`
+9. **Update Progress** — Write to `claude-progress.txt`
+10. **Clean Exit** — Ensure no uncommitted changes remain
 
-### 模式二：多 Agent 并行开发（concurrency = 2~8）
+### Mode 2: Multi-Agent Parallel Development (concurrency = 2–8)
 
-多个 Coding Agent 同时工作，每个在独立 Git 分支上开发不同 Feature。
+Multiple Coding Agents work simultaneously, each on an isolated Git branch developing a different feature.
 
 ```
                     ┌─────────────┐
@@ -360,53 +363,55 @@ Session 2          Session 3          Session 4
             │                │                │
             ▼                ▼                ▼
      ┌──────────────────────────────────────────────┐
-     │          Git Merge Queue（加锁串行）           │
+     │          Git Merge Queue (serialized)         │
      │                                              │
-     │  → 成功：合并到 main，领取下一个 Feature       │
-     │  → 冲突：标记人工处理，Agent 跳过继续          │
+     │  → Success: merge to main, claim next feature│
+     │  → Conflict: flag for manual resolution,     │
+     │    agent skips and continues                  │
      └──────────────────────────────────────────────┘
 ```
 
-并行模式关键机制：
+Key mechanisms in parallel mode:
 
-| 机制 | 说明 |
+| Mechanism | Description |
 |------|------|
-| Feature 原子分配 | `claimedFeatures` Map 保证不会两个 Agent 抢同一个 Feature |
-| 分支隔离 | `agent-{index}/feature-{featureId}`，互不干扰 |
-| Git 锁 | Promise 队列串行执行所有 git 操作 |
-| 自动合并 | `git merge --no-ff` 回 main，保留分支历史 |
-| 冲突处理 | 合并失败时 `git merge --abort`，标记人工介入 |
-| 错误重试 | Agent 异常退出后 5 秒自动重试领取新 Feature |
+| Atomic Feature Assignment | `claimedFeatures` Map ensures no two agents claim the same feature |
+| Branch Isolation | `agent-{index}/feature-{featureId}`, zero interference |
+| Git Lock | Promise queue serializes all git operations |
+| Auto-Merge | `git merge --no-ff` back to main, preserving branch history |
+| Conflict Handling | On merge failure, `git merge --abort` and flag for manual intervention |
+| Error Retry | Agent auto-retries with a new feature after 5 seconds on abnormal exit |
 
-### 生命周期状态机
+### Lifecycle State Machine
 
 ```
                  ┌──────────┐
-     创建/导入 ──►│   idle   │
+  Create/Import ─►│   idle   │
                  └────┬─────┘
-                      │ 启动
+                      │ Start
                       ▼
               ┌──────────────┐
-              │ initializing │  Initializer Agent 运行中
+              │ initializing │  Initializer Agent running
               └──────┬───────┘
-                     │ feature_list.json 生成
+                     │ feature_list.json generated
                      ▼
               ┌──────────────┐
-              │  reviewing   │  审查模式（可选）
+              │  reviewing   │  Review mode (optional)
               └──────┬───────┘
-                     │ 确认审查
+                     │ Confirm review
                      ▼
-              ┌──────────────┐  ◄── 自动续接（3s 延迟）
+              ┌──────────────┐  ◄── Auto-resume (3s delay)
               │   running    │──────────────┐
               └──┬───────┬───┘              │
-          手动停止│       │ 全部通过         │
-                 ▼       ▼                  │
-          ┌────────┐ ┌───────────┐   Session N 结束
+       Manual    │       │ All passed       │
+       stop      │       │                  │
+                 ▼       ▼           Session N ends
+          ┌────────┐ ┌───────────┐
           │ paused │ │ completed │
           └────────┘ └───────────┘
 ```
 
-## 参考
+## References
 
 - [Anthropic: Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
 - [Anthropic: Autonomous Coding Quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding)

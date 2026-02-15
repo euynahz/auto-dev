@@ -7,13 +7,13 @@ interface Props {
   onChange: (key: string, value: unknown) => void
 }
 
-/** 根据 Provider schema 动态渲染专属设置控件 */
+/** Dynamically render provider-specific settings based on Provider schema */
 export function ProviderSettings({ settings, values, onChange }: Props) {
   if (!settings.length) return null
 
   return (
     <div className="space-y-3 rounded-md border border-dashed border-border p-3">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Provider 专属设置</p>
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Provider Settings</p>
       {settings.map((s) => {
         const val = values[s.key] ?? s.default
         return (

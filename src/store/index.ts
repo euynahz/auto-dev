@@ -7,38 +7,38 @@ interface AgentCountInfo {
 }
 
 interface AppState {
-  // 项目列表
+  // Project list
   projects: Project[]
   setProjects: (projects: Project[]) => void
   updateProject: (id: string, updates: Partial<Project>) => void
   addProject: (project: Project) => void
   removeProject: (id: string) => void
 
-  // 当前查看的项目
+  // Currently viewed project
   currentProject: Project | null
   setCurrentProject: (project: Project | null) => void
 
-  // 实时日志
+  // Real-time logs
   logs: Record<string, LogEntry[]>
   setLogs: (projectId: string, entries: LogEntry[]) => void
   addLog: (projectId: string, entry: LogEntry) => void
   clearLogs: (projectId: string) => void
 
-  // Agent 活跃数量
+  // Active agent count
   agentCounts: Record<string, AgentCountInfo>
   setAgentCount: (projectId: string, info: AgentCountInfo) => void
 
-  // 人工协助请求
+  // Human assistance requests
   helpRequests: Record<string, HelpRequest[]>
   setHelpRequests: (projectId: string, requests: HelpRequest[]) => void
   addHelpRequest: (projectId: string, request: HelpRequest) => void
   resolveHelpRequest: (projectId: string, requestId: string) => void
 
-  // WebSocket 连接状态
+  // WebSocket connection state
   wsConnected: boolean
   setWsConnected: (connected: boolean) => void
 
-  // 处理 WebSocket 消息
+  // Handle WebSocket messages
   handleWSMessage: (msg: WSMessage) => void
 }
 
@@ -70,7 +70,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => {
       const existing = state.logs[projectId] || []
 
-      // 临时日志（thinking）：替换同一 agent 的上一条临时日志，而非追加
+      // Temporary log (thinking): replace the previous temporary log from the same agent instead of appending
       if (entry.temporary) {
         const lastIdx = existing.length - 1
         const last = existing[lastIdx]
@@ -157,7 +157,7 @@ export const useStore = create<AppState>((set, get) => ({
         break
       case 'feature_update':
         set((state) => {
-          // 优先从 currentProject 获取 features（比 projects 数组更可能是最新的）
+          // Prefer features from currentProject (more likely to be up-to-date than the projects array)
           const current = state.currentProject?.id === msg.projectId ? state.currentProject : null
           const project = current || state.projects.find((p) => p.id === msg.projectId)
           if (!project) return state

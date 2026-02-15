@@ -19,13 +19,13 @@ import { cn } from '@/lib/utils'
 import type { ProjectStatus } from '@/types'
 
 const statusConfig: Record<ProjectStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'success' | 'warning' }> = {
-  idle: { label: '空闲', variant: 'secondary' },
-  initializing: { label: '初始化中', variant: 'warning' },
-  reviewing: { label: '待审查', variant: 'warning' },
-  running: { label: '运行中', variant: 'default' },
-  paused: { label: '已暂停', variant: 'warning' },
-  completed: { label: '已完成', variant: 'success' },
-  error: { label: '错误', variant: 'destructive' },
+  idle: { label: 'Idle', variant: 'secondary' },
+  initializing: { label: 'Initializing', variant: 'warning' },
+  reviewing: { label: 'Reviewing', variant: 'warning' },
+  running: { label: 'Running', variant: 'default' },
+  paused: { label: 'Paused', variant: 'warning' },
+  completed: { label: 'Completed', variant: 'success' },
+  error: { label: 'Error', variant: 'destructive' },
 }
 
 export default function ProjectDetail() {
@@ -63,7 +63,7 @@ export default function ProjectDetail() {
     try {
       await api.startAgent(id)
     } catch (err) {
-      console.error('启动失败:', err)
+      console.error('Start failed:', err)
     } finally {
       setActionLoading(false)
     }
@@ -75,7 +75,7 @@ export default function ProjectDetail() {
     try {
       await api.stopAgent(id)
     } catch (err) {
-      console.error('停止失败:', err)
+      console.error('Stop failed:', err)
     } finally {
       setActionLoading(false)
     }
@@ -89,7 +89,7 @@ export default function ProjectDetail() {
       setAppendSpec('')
       setAppendOpen(false)
     } catch (err) {
-      console.error('追加需求失败:', err)
+      console.error('Append spec failed:', err)
     } finally {
       setAppendLoading(false)
     }
@@ -104,7 +104,7 @@ export default function ProjectDetail() {
       setCurrentProject(updated)
       setSystemPromptSaved(true)
     } catch (err) {
-      console.error('保存系统提示词失败:', err)
+      console.error('Save system prompt failed:', err)
     } finally {
       setSystemPromptLoading(false)
     }
@@ -116,7 +116,7 @@ export default function ProjectDetail() {
     try {
       await api.reviewFeatures(id, featureIds, instruction)
     } catch (err) {
-      console.error('审查修改失败:', err)
+      console.error('Review submit failed:', err)
     } finally {
       setReviewLoading(false)
     }
@@ -128,7 +128,7 @@ export default function ProjectDetail() {
     try {
       await api.confirmReview(id)
     } catch (err) {
-      console.error('确认审查失败:', err)
+      console.error('Confirm review failed:', err)
     } finally {
       setConfirmReviewLoading(false)
     }
@@ -165,7 +165,7 @@ export default function ProjectDetail() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-3 animate-fade-in">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="text-sm text-muted-foreground">加载项目中...</span>
+          <span className="text-sm text-muted-foreground">Loading project...</span>
         </div>
       </div>
     )
@@ -174,8 +174,8 @@ export default function ProjectDetail() {
   if (!currentProject) {
     return (
       <div className="text-center py-16 animate-fade-in-up">
-        <p className="text-muted-foreground">项目不存在</p>
-        <Link to="/" className="text-primary hover:underline mt-2 inline-block">返回首页</Link>
+        <p className="text-muted-foreground">Project not found</p>
+        <Link to="/" className="text-primary hover:underline mt-2 inline-block">Back to Home</Link>
       </div>
     )
   }
@@ -207,7 +207,7 @@ export default function ProjectDetail() {
           </Badge>
         )}
 
-        <button onClick={() => { setEditingSystemPrompt(project.systemPrompt || ''); setSystemPromptSaved(false); setInfoOpen(true) }} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary/50 cursor-pointer shrink-0" title="项目详情">
+        <button onClick={() => { setEditingSystemPrompt(project.systemPrompt || ''); setSystemPromptSaved(false); setInfoOpen(true) }} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary/50 cursor-pointer shrink-0" title="Project Details">
           <Info className="h-4 w-4" />
         </button>
 
@@ -222,23 +222,23 @@ export default function ProjectDetail() {
           </div>
           <Button variant="outline" size="sm" onClick={() => setAppendOpen(true)} className="gap-1.5 h-7 cursor-pointer">
             <Plus className="h-3.5 w-3.5" />
-            追加需求
+            Append Spec
           </Button>
           {isReviewing && (
             <Button size="sm" onClick={handleConfirmReview} disabled={confirmReviewLoading} className="gap-1.5 h-7 cursor-pointer">
               {confirmReviewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-              确认并开始编码
+              Confirm & Start Coding
             </Button>
           )}
           {isRunning ? (
             <Button variant="destructive" size="sm" onClick={handleStop} disabled={actionLoading} className="gap-1.5 h-7 cursor-pointer">
               {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
-              停止
+              Stop
             </Button>
           ) : (
             <Button size="sm" onClick={handleStart} disabled={actionLoading || project.status === 'completed'} className="gap-1.5 h-7 cursor-pointer">
               {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-              {project.status === 'idle' ? '启动' : '继续'}
+              {project.status === 'idle' ? 'Start' : 'Resume'}
             </Button>
           )}
         </div>
@@ -249,16 +249,16 @@ export default function ProjectDetail() {
         <DialogContent className="max-w-none w-screen h-screen rounded-none sm:rounded-none border-0 flex flex-col">
           <DialogHeader className="shrink-0">
             <DialogTitle>{project.name}</DialogTitle>
-            <DialogDescription>项目需求描述</DialogDescription>
+            <DialogDescription>Project Specification</DialogDescription>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto pr-4">
             <div className="prose dark:prose-invert prose-sm max-w-4xl mx-auto [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1.5 [&_p]:text-sm [&_p]:text-muted-foreground [&_p]:mb-2 [&_p]:leading-relaxed [&_ul]:text-sm [&_ul]:text-muted-foreground [&_ul]:mb-2 [&_ul]:pl-4 [&_ol]:text-sm [&_ol]:text-muted-foreground [&_ol]:mb-2 [&_ol]:pl-4 [&_li]:mb-1 [&_code]:text-xs [&_code]:bg-secondary/50 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_pre]:bg-secondary/30 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:overflow-x-auto [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted-foreground">
               <ReactMarkdown>{project.spec}</ReactMarkdown>
             </div>
             <div className="max-w-4xl mx-auto mt-6 border-t pt-4 space-y-2">
-              <label className="text-sm font-medium">系统提示词</label>
+              <label className="text-sm font-medium">System Prompt</label>
               <Textarea
-                placeholder="对所有 Agent 生效的额外指令，如编码规范、技术栈偏好等..."
+                placeholder="Additional instructions for all Agents, e.g. coding standards, tech stack preferences..."
                 value={editingSystemPrompt}
                 onChange={(e) => { setEditingSystemPrompt(e.target.value); setSystemPromptSaved(false) }}
                 rows={4}
@@ -267,10 +267,10 @@ export default function ProjectDetail() {
               <div className="flex items-center gap-2">
                 <Button size="sm" onClick={handleSaveSystemPrompt} disabled={systemPromptLoading} className="cursor-pointer">
                   {systemPromptLoading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                  保存
+                  Save
                 </Button>
-                {systemPromptSaved && <span className="text-xs text-green-500">已保存，修改将在下个 Session 生效</span>}
-                <p className="text-xs text-muted-foreground ml-auto">通过 --system-prompt 注入到所有 Agent</p>
+                {systemPromptSaved && <span className="text-xs text-green-500">Saved. Changes will take effect in the next session.</span>}
+                <p className="text-xs text-muted-foreground ml-auto">Injected via --system-prompt to all Agents</p>
               </div>
             </div>
           </div>
@@ -281,20 +281,20 @@ export default function ProjectDetail() {
       <Dialog open={appendOpen} onOpenChange={setAppendOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>追加需求</DialogTitle>
-            <DialogDescription>输入新需求描述，系统将自动拆解为 features 并追加到任务队列</DialogDescription>
+            <DialogTitle>Append Spec</DialogTitle>
+            <DialogDescription>Enter new requirements. The system will automatically break them into features and add them to the task queue.</DialogDescription>
           </DialogHeader>
           <Textarea
-            placeholder="描述你要追加的功能需求..."
+            placeholder="Describe the features you want to add..."
             value={appendSpec}
             onChange={(e) => setAppendSpec(e.target.value)}
             className="min-h-[160px] resize-none"
           />
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setAppendOpen(false)} className="cursor-pointer">取消</Button>
+            <Button variant="outline" size="sm" onClick={() => setAppendOpen(false)} className="cursor-pointer">Cancel</Button>
             <Button size="sm" onClick={handleAppendSpec} disabled={appendLoading || !appendSpec.trim()} className="gap-1.5 cursor-pointer">
               {appendLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              提交
+              Submit
             </Button>
           </div>
         </DialogContent>
@@ -310,7 +310,7 @@ export default function ProjectDetail() {
               <button
                 onClick={() => setFullPanel(fullPanel === 'features' ? null : 'features')}
                 className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/50 cursor-pointer"
-                title={fullPanel === 'features' ? '退出全屏' : '全屏'}
+                title={fullPanel === 'features' ? 'Exit Fullscreen' : 'Fullscreen'}
               >
                 {fullPanel === 'features' ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               </button>
@@ -329,7 +329,7 @@ export default function ProjectDetail() {
                 {showAgentTabs ? (
                   <Tabs value={activeAgentTab} onValueChange={setActiveAgentTab} className="flex flex-col h-full">
                     <TabsList className="shrink-0">
-                      <TabsTrigger value="all">全部</TabsTrigger>
+                      <TabsTrigger value="all">All</TabsTrigger>
                       {agentIndices.map((i) => (
                         <TabsTrigger key={i} value={String(i)}>
                           Agent {i}
@@ -350,12 +350,12 @@ export default function ProjectDetail() {
             {(!fullPanel || fullPanel === 'sessions') && (
               <Card className={cn('p-3 animate-fade-in', fullPanel === 'sessions' && 'h-full flex flex-col')} style={{ animationDelay: '200ms' }}>
                 <div className="flex items-center gap-2 mb-2 shrink-0">
-                  <span className="text-sm font-medium">Session 历史</span>
+                  <span className="text-sm font-medium">Session History</span>
                   <span className="text-xs text-muted-foreground font-mono">({project.sessions.length})</span>
                   <button
                     onClick={() => setFullPanel(fullPanel === 'sessions' ? null : 'sessions')}
                     className="ml-auto text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/50 cursor-pointer"
-                    title={fullPanel === 'sessions' ? '退出全屏' : '全屏'}
+                    title={fullPanel === 'sessions' ? 'Exit Fullscreen' : 'Fullscreen'}
                   >
                     {fullPanel === 'sessions' ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
                   </button>
@@ -369,7 +369,7 @@ export default function ProjectDetail() {
         )}
       </div>
 
-      {/* 人工协助弹窗 */}
+      {/* Human assistance dialog */}
       <HelpDialog projectId={project.id} projectName={project.name} />
     </div>
   )

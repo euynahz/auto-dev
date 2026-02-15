@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ProviderInfo } from '@/types'
 import { api } from '@/lib/api'
 
-/** 缓存 providers，避免每次打开 Dialog 都请求 */
+/** Cache providers to avoid fetching on every Dialog open */
 let cachedProviders: ProviderInfo[] | null = null
 
 export function useProviders() {
@@ -17,7 +17,7 @@ export function useProviders() {
         setProviders(data)
       })
       .catch(() => {
-        // fallback: 至少有 claude
+        // fallback: at least have claude
         const fallback: ProviderInfo[] = [{
           name: 'claude',
           displayName: 'Claude Code',

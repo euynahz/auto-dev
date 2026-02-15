@@ -9,107 +9,107 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(err.message || '请求失败')
+    throw new Error(err.message || 'Request failed')
   }
   return res.json()
 }
 
-// 项目 API
+// Project API
 export const api = {
-  // 获取可用 AI Providers
+  // Get available AI Providers
   getProviders: () => request<ProviderInfo[]>('/providers'),
 
-  // 检查目录内容
+  // Check directory contents
   checkDir: (path: string) =>
     request<{ exists: boolean; hasContent: boolean; entries: string[] }>('/check-dir', {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
 
-  // 获取项目列表
+  // Get project list
   getProjects: () => request<Project[]>('/projects'),
 
-  // 获取项目详情
+  // Get project details
   getProject: (id: string) => request<Project>(`/projects/${id}`),
 
-  // 创建项目
+  // Create project
   createProject: (data: CreateProjectRequest) =>
     request<Project>('/projects', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  // 导入已有项目
+  // Import existing project
   importProject: (data: ImportProjectRequest) =>
     request<Project>('/projects/import', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  // 删除项目
+  // Delete project
   deleteProject: (id: string) =>
     request<{ message: string }>(`/projects/${id}`, { method: 'DELETE' }),
 
-  // 启动 Agent
+  // Start Agent
   startAgent: (id: string) =>
     request<{ message: string }>(`/projects/${id}/start`, { method: 'POST' }),
 
-  // 停止 Agent
+  // Stop Agent
   stopAgent: (id: string) =>
     request<{ message: string }>(`/projects/${id}/stop`, { method: 'POST' }),
 
-  // 获取 feature list
+  // Get feature list
   getFeatures: (id: string) => request<Project['features']>(`/projects/${id}/features`),
 
-  // 获取 session 历史
+  // Get session history
   getSessions: (id: string) => request<Project['sessions']>(`/projects/${id}/sessions`),
 
-  // 获取历史日志
+  // Get historical logs
   getLogs: (id: string) => request<LogEntry[]>(`/projects/${id}/logs`),
 
-  // 获取待处理的人工协助请求
+  // Get pending human assistance requests
   getHelpRequests: (id: string) => request<HelpRequest[]>(`/projects/${id}/help-requests`),
 
-  // 提交人工协助回复
+  // Submit human assistance response
   submitHelpResponse: (id: string, requestId: string, response: string) =>
     request<HelpRequest>(`/projects/${id}/help-response`, {
       method: 'POST',
       body: JSON.stringify({ requestId, response }),
     }),
 
-  // 追加需求
+  // Append spec
   appendSpec: (id: string, spec: string) =>
     request<{ message: string }>(`/projects/${id}/append-spec`, {
       method: 'POST',
       body: JSON.stringify({ spec }),
     }),
 
-  // 更新系统提示词
+  // Update system prompt
   updateSystemPrompt: (id: string, systemPrompt: string) =>
     request<Project>(`/projects/${id}/system-prompt`, {
       method: 'PUT',
       body: JSON.stringify({ systemPrompt }),
     }),
 
-  // 审查修改 Feature
+  // Review and modify features
   reviewFeatures: (id: string, featureIds: string[], instruction: string) =>
     request<{ message: string }>(`/projects/${id}/review-features`, {
       method: 'POST',
       body: JSON.stringify({ featureIds, instruction }),
     }),
 
-  // 确认审查并开始编码
+  // Confirm review and start coding
   confirmReview: (id: string) =>
     request<{ message: string }>(`/projects/${id}/confirm-review`, {
       method: 'POST',
     }),
 
-  // 获取 session 原始日志
+  // Get session raw log
   getSessionRawLog: async (projectId: string, sessionId: string): Promise<string> => {
     const res = await fetch(`${BASE}/projects/${projectId}/sessions/${sessionId}/raw-log`)
     if (!res.ok) {
       if (res.status === 404) throw new Error('LOG_NOT_FOUND')
-      throw new Error('获取日志失败')
+      throw new Error('Failed to fetch log')
     }
     return res.text()
   },
