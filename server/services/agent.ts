@@ -8,7 +8,7 @@ import type { TransitionResult } from './state-machine.js'
 import { requireProvider } from '../providers/registry.js'
 import type { AgentEvent } from '../providers/types.js'
 import { log } from '../lib/logger.js'
-import type { BroadcastMessage, LogEntryData, ProjectData, SessionData, HelpRequestData } from '../types.js'
+import type { BroadcastMessage, LogEntryData, ProjectData, SessionData, HelpRequestData, FeatureProposalData } from '../types.js'
 
 // Broadcast function, injected by index.ts
 let broadcast: (msg: BroadcastMessage) => void = () => {}
@@ -312,6 +312,7 @@ function gatherAgentContext(projectId: string, sessionId: string, agentIndex: nu
 
 // Detect and create human help request
 const HELP_PATTERN = /\[HUMAN_HELP\]\s*([\s\S]+)/
+const NEW_FEATURE_PATTERN = /\[NEW_FEATURE\]\s*(\{[\s\S]*?\})\s*$/m
 function detectHelpRequest(content: string, sessionId: string, projectId: string, agentIndex: number) {
   const match = content.match(HELP_PATTERN)
   if (!match) return
@@ -336,6 +337,102 @@ function detectHelpRequest(content: string, sessionId: string, projectId: string
   log.agent(`Agent ${agentIndex} requesting human help: ${message.slice(0, 100)}`)
 }
 
+// Detect [NEW_FEATURE] proposals from coding agents
+function detectFeatureProposal(content: string, sessionId: string, projectId: string, agentIndex: number) {
+  const match = content.match(NEW_FEATURE_PATTERN)
+  if (!match) return
+
+  let parsed: { description?: string; reason?: string; steps?: string[] }
+  try {
+    parsed = JSON.parse(match[1])
+  } catch {
+    log.error(`Agent ${agentIndex}: Failed to parse [NEW_FEATURE] JSON`)
+    return
+  }
+
+  if (!parsed.description || !parsed.steps?.length) {
+    log.error(`Agent ${agentIndex}: [NEW_FEATURE] missing description or steps`)
+    return
+  }
+
+  const ctx = gatherAgentContext(projectId, sessionId, agentIndex)
+  const project = projectService.getProject(projectId)
+  if (!project) return
+
+  // Read current features to generate next ID and deduplicate
+  const features = projectService.getFeatures(projectId)
+  const maxNum = features.reduce((max, f) => {
+    const n = parseInt(f.id.replace('feature-', ''), 10)
+    return isNaN(n) ? max : Math.max(max, n)
+  }, 0)
+  const newId = `feature-${String(maxNum + 1).padStart(3, '0')}`
+
+  // Simple dedup: skip if description is too similar to existing feature
+  const isDuplicate = features.some(f =>
+    f.description.toLowerCase().includes(parsed.description!.toLowerCase()) ||
+    parsed.description!.toLowerCase().includes(f.description.toLowerCase())
+  )
+  if (isDuplicate) {
+    log.agent(`Agent ${agentIndex}: [NEW_FEATURE] skipped (duplicate): ${parsed.description!.slice(0, 80)}`)
+    const skipEntry = createLogEntry(sessionId, 'system',
+      `⏭️ Feature proposal skipped (similar feature already exists): ${parsed.description!.slice(0, 80)}`, agentIndex)
+    projectService.addLog(projectId, skipEntry)
+    broadcast({ type: 'log', projectId, entry: skipEntry })
+    return
+  }
+
+  // Append to feature_list.json on disk
+  const featureListPath = path.join(project.projectDir, 'feature_list.json')
+  try {
+    const raw = fs.readFileSync(featureListPath, 'utf8')
+    const list = JSON.parse(raw)
+    list.push({
+      id: newId,
+      category: 'Agent Proposed',
+      description: parsed.description,
+      steps: parsed.steps,
+      passes: false,
+    })
+    fs.writeFileSync(featureListPath, JSON.stringify(list, null, 2))
+  } catch (err) {
+    log.error(`Failed to append feature to disk: ${err}`)
+    return
+  }
+
+  // Sync to in-memory state
+  projectService.syncFeaturesFromDisk(projectId)
+
+  const proposal: FeatureProposalData = {
+    id: uuidv4(),
+    projectId,
+    sessionId,
+    agentIndex,
+    feature: {
+      description: parsed.description!,
+      reason: parsed.reason || '',
+      steps: parsed.steps!,
+    },
+    status: 'accepted',
+    createdAt: new Date().toISOString(),
+    sourceFeatureId: ctx.featureId,
+  }
+
+  broadcast({ type: 'feature_proposal', projectId, proposal })
+
+  const logEntry = createLogEntry(sessionId, 'system',
+    `💡 Agent ${agentIndex} proposed new feature → ${newId}: ${parsed.description!.slice(0, 100)}`, agentIndex)
+  projectService.addLog(projectId, logEntry)
+  broadcast({ type: 'log', projectId, entry: logEntry })
+
+  // Sync progress
+  const progress = projectService.getProgress(projectId)
+  broadcast({ type: 'progress', projectId, progress })
+  const newFeatures = projectService.getFeatures(projectId)
+  broadcast({ type: 'features_sync', projectId, features: newFeatures })
+
+  log.agent(`Agent ${agentIndex} proposed new feature ${newId}: ${parsed.description!.slice(0, 80)}`)
+}
+
 // Check if content looks like JSON (agent thinking process)
 function looksLikeJson(text: string): boolean {
   const trimmed = text.trim()
@@ -358,6 +455,7 @@ function handleProviderEvent(
   switch (event.type) {
     case 'text':
       detectHelpRequest(event.content, sessionId, projectId, agentIndex ?? 0)
+      detectFeatureProposal(event.content, sessionId, projectId, agentIndex ?? 0)
       checkLoopAndKill(sessionId, projectId, event.content, agentIndex ?? 0)
       {
         const entry = createLogEntry(sessionId, 'assistant', event.content.slice(0, 800), agentIndex)

@@ -85,3 +85,17 @@ If you encounter problems you cannot resolve independently (missing configuratio
 
 The system will forward the problem to the user. The user's response will be written to `.human-response.md` in the project root.
 If that file exists, read it first to get the user's guidance, then continue working.
+
+## Proposing New Features
+
+If during implementation you discover missing functionality that is **not in the current feature list** but is required (e.g. a shared utility, a missing API endpoint, a database migration), propose it:
+
+```
+[NEW_FEATURE] {"description": "Brief description", "reason": "Why this is needed", "steps": ["Step 1", "Step 2"]}
+```
+
+Rules:
+- Valid JSON on a single line after the marker; `description` and `steps` required
+- The system auto-appends it to feature_list.json for the next available agent
+- **Do not stop your current work** — continue your assigned feature after proposing
+- Only propose genuinely missing functionality, not nice-to-haves

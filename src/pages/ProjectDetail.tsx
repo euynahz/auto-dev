@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, memo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Square, Loader2, Users, Zap, Info, Maximize2, Minimize2, Plus } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -28,9 +28,62 @@ const statusConfig: Record<ProjectStatus, { label: string; variant: 'default' | 
   error: { label: 'Error', variant: 'destructive' },
 }
 
+/**
+ * Isolated log panel — subscribes to `logs` via its own Zustand selector
+ * so that high-frequency log updates never re-render the parent header.
+ */
+const AgentLogPanel = memo(function AgentLogPanel({
+  projectId,
+  activeAgentTab,
+  showAgentTabs,
+  agentIndices,
+  fullscreen,
+  onToggleFullscreen,
+  onTabChange,
+}: {
+  projectId: string
+  activeAgentTab: string
+  showAgentTabs: boolean
+  agentIndices: number[]
+  fullscreen: boolean
+  onToggleFullscreen: () => void
+  onTabChange: (tab: string) => void
+}) {
+  const allLogs = useStore((s) => s.logs[projectId] || [])
+  const projectLogs = useMemo(() => {
+    if (activeAgentTab === 'all') return allLogs
+    const idx = parseInt(activeAgentTab, 10)
+    return allLogs.filter((l) => l.agentIndex === idx)
+  }, [allLogs, activeAgentTab])
+
+  if (showAgentTabs) {
+    return (
+      <Tabs value={activeAgentTab} onValueChange={onTabChange} className="flex flex-col h-full">
+        <TabsList className="shrink-0">
+          <TabsTrigger value="all">All</TabsTrigger>
+          {agentIndices.map((i) => (
+            <TabsTrigger key={i} value={String(i)}>
+              Agent {i}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value={activeAgentTab} className="flex-1 min-h-0 mt-0">
+          <AgentLog logs={projectLogs} fullscreen={fullscreen} onToggleFullscreen={onToggleFullscreen} />
+        </TabsContent>
+      </Tabs>
+    )
+  }
+
+  return <AgentLog logs={projectLogs} fullscreen={fullscreen} onToggleFullscreen={onToggleFullscreen} />
+})
+
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
-  const { currentProject, setCurrentProject, logs, setLogs, agentCounts, setHelpRequests } = useStore()
+  const currentProject = useStore((s) => s.currentProject)
+  const setCurrentProject = useStore((s) => s.setCurrentProject)
+  const setLogs = useStore((s) => s.setLogs)
+  const agentCounts = useStore((s) => s.agentCounts)
+  const setHelpRequests = useStore((s) => s.setHelpRequests)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [activeAgentTab, setActiveAgentTab] = useState('all')
@@ -133,14 +186,6 @@ export default function ProjectDetail() {
       setConfirmReviewLoading(false)
     }
   }
-
-  const projectLogs = useMemo(() => {
-    if (!currentProject) return []
-    const allLogs = logs[currentProject.id] || []
-    if (activeAgentTab === 'all') return allLogs
-    const idx = parseInt(activeAgentTab, 10)
-    return allLogs.filter((l) => l.agentIndex === idx)
-  }, [logs, currentProject, activeAgentTab])
 
   const agentIndices = useMemo(() => {
     if (!currentProject) return []
@@ -326,23 +371,15 @@ export default function ProjectDetail() {
           <div className={cn('flex flex-col gap-4 overflow-hidden animate-slide-in-right', fullPanel && 'h-full')}>
             {(!fullPanel || fullPanel === 'logs') && (
               <div className={cn('flex-1 min-h-0 overflow-hidden', fullPanel === 'logs' && 'h-full')}>
-                {showAgentTabs ? (
-                  <Tabs value={activeAgentTab} onValueChange={setActiveAgentTab} className="flex flex-col h-full">
-                    <TabsList className="shrink-0">
-                      <TabsTrigger value="all">All</TabsTrigger>
-                      {agentIndices.map((i) => (
-                        <TabsTrigger key={i} value={String(i)}>
-                          Agent {i}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                    <TabsContent value={activeAgentTab} className="flex-1 min-h-0 mt-0">
-                      <AgentLog logs={projectLogs} fullscreen={fullPanel === 'logs'} onToggleFullscreen={() => setFullPanel(fullPanel === 'logs' ? null : 'logs')} />
-                    </TabsContent>
-                  </Tabs>
-                ) : (
-                  <AgentLog logs={projectLogs} fullscreen={fullPanel === 'logs'} onToggleFullscreen={() => setFullPanel(fullPanel === 'logs' ? null : 'logs')} />
-                )}
+                <AgentLogPanel
+                  projectId={project.id}
+                  activeAgentTab={activeAgentTab}
+                  showAgentTabs={showAgentTabs}
+                  agentIndices={agentIndices}
+                  fullscreen={fullPanel === 'logs'}
+                  onToggleFullscreen={() => setFullPanel(fullPanel === 'logs' ? null : 'logs')}
+                  onTabChange={setActiveAgentTab}
+                />
               </div>
             )}
 

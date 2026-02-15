@@ -114,3 +114,29 @@ Example: `[HUMAN_HELP] The project requires a database connection, but no databa
 
 The system will forward your question to the user. The user's response will be written to `.human-response.md` in the project root.
 If that file exists, read it first to get the user's guidance, then continue working.
+
+## Proposing New Features
+
+During implementation, you may discover missing functionality that is **not in the current feature list** but is required for the project to work correctly. Examples:
+- A utility/helper that multiple features depend on but nobody planned
+- A missing API endpoint that the frontend assumes exists
+- A database migration or schema change that wasn't scoped as a feature
+- An integration layer between two features that was overlooked
+
+When you discover such a gap, **do not implement it yourself** (it's outside your current feature scope). Instead, propose it:
+
+```
+[NEW_FEATURE] {"description": "Brief description of what's needed", "reason": "Why this is needed and which feature exposed the gap", "steps": ["Step 1", "Step 2"]}
+```
+
+Example:
+```
+[NEW_FEATURE] {"description": "Password hashing utility using bcrypt", "reason": "Required by feature-003 (user login) but no hashing utility exists in the codebase", "steps": ["Install bcrypt dependency", "Create src/utils/hash.ts with hashPassword and verifyPassword functions", "Add unit tests"]}
+```
+
+Rules:
+- The JSON must be valid and on a single line after the `[NEW_FEATURE]` marker
+- `description` and `steps` are required; `reason` is recommended
+- The system will auto-append it to feature_list.json and assign it to the next available agent
+- **Do not stop your current work** — continue implementing your assigned feature after proposing
+- Only propose genuinely missing functionality, not nice-to-haves or refactors

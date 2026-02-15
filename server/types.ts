@@ -71,6 +71,21 @@ export interface HelpRequestData {
   recentLogs?: string[]
 }
 
+export interface FeatureProposalData {
+  id: string
+  projectId: string
+  sessionId: string
+  agentIndex: number
+  feature: {
+    description: string
+    reason: string
+    steps: string[]
+  }
+  status: 'accepted' | 'pending'  // accepted = auto-added; pending = awaiting review
+  createdAt: string
+  sourceFeatureId?: string  // Which feature triggered this proposal
+}
+
 // WebSocket broadcast messages
 export type BroadcastMessage =
   | { type: 'log'; projectId: string; entry: LogEntryData }
@@ -81,3 +96,4 @@ export type BroadcastMessage =
   | { type: 'session_update'; projectId: string; session: SessionData }
   | { type: 'agent_count'; projectId: string; active: number; total: number }
   | { type: 'human_help'; projectId: string; request: HelpRequestData }
+  | { type: 'feature_proposal'; projectId: string; proposal: FeatureProposalData }
