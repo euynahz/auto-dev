@@ -30,6 +30,7 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
   const [dirPath, setDirPath] = useState('')
   const [taskPrompt, setTaskPrompt] = useState('')
   const [model, setModel] = useState('claude-opus-4-6')
+  const [provider, setProvider] = useState('claude')
   const [concurrency, setConcurrency] = useState(1)
   const [useAgentTeams, setUseAgentTeams] = useState(false)
   const [reviewBeforeCoding, setReviewBeforeCoding] = useState(false)
@@ -62,7 +63,7 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
     try {
       const project = await api.importProject({
         name, path: dirPath, taskPrompt: taskPrompt.trim() || undefined,
-        model, concurrency, useAgentTeams,
+        model, concurrency, useAgentTeams, provider,
         systemPrompt: systemPrompt.trim() || undefined,
         reviewBeforeCoding: reviewBeforeCoding || undefined,
       })
@@ -181,6 +182,16 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
             {(showAdvanced || isHorizontal) && (
               <div className={cn('space-y-3', !isHorizontal && 'pl-4 border-l-2 border-border')}>
                 <div className="space-y-2">
+                  <label className="text-sm font-medium">AI Provider</label>
+                  <select
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="claude">Claude Code</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
                   <label className="text-sm font-medium">模型</label>
                   <Input
                     value={model}
@@ -205,7 +216,7 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {useAgentTeams
-                      ? 'Agent Teams 模式下，Claude 将自主决定实际并行数量'
+                      ? 'Agent Teams 模式下，AI 将自主决定实际并行数量'
                       : '多个 Agent 将在独立 git 分支上并行开发不同 feature'}
                   </p>
                 </div>
@@ -220,7 +231,7 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
                     <span className="text-sm font-medium">Agent Teams 模式</span>
                   </label>
                   <p className="text-xs text-muted-foreground">
-                    启用后，系统只启动一个 Claude 会话，由 Claude 内部使用 Agent Teams 功能自主协调多个子 Agent 完成全流程开发
+                    启用后，系统只启动一个 AI 会话，由 AI 内部使用 Agent Teams 功能自主协调多个子 Agent 完成全流程开发
                   </p>
                 </div>
                 <div className="space-y-2">

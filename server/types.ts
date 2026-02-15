@@ -5,9 +5,10 @@ export interface ProjectData {
   name: string
   spec: string
   status: 'idle' | 'initializing' | 'reviewing' | 'running' | 'paused' | 'completed' | 'error'
+  provider: string    // AI provider: 'claude' | 'codex' | 'gemini' | ...
   model: string
   concurrency: number // 并发 Agent 数量，默认 1
-  useAgentTeams: boolean // 使用 Agent Teams 模式（Claude 内部协调多 Agent）
+  useAgentTeams: boolean // 使用 Agent Teams 模式（provider 支持时，内部协调多 Agent）
   systemPrompt?: string // 项目级系统提示词，注入到所有 Agent 的 --system-prompt 参数
   reviewBeforeCoding?: boolean // 初始化后进入审查模式，不自动开始编码
   createdAt: string

@@ -5,6 +5,8 @@ import path from 'path'
 import * as projectService from './project.js'
 import { transition } from './state-machine.js'
 import type { TransitionResult } from './state-machine.js'
+import { requireProvider } from '../providers/registry.js'
+import type { AgentEvent } from '../providers/types.js'
 import { log } from '../lib/logger.js'
 import type { BroadcastMessage, LogEntryData, ProjectData, SessionData, HelpRequestData } from '../types.js'
 
@@ -26,8 +28,8 @@ function applyTransition(projectId: string, result: TransitionResult) {
   }
 }
 
-// Claude 原始日志目录
-const LOGS_DIR = path.join(process.cwd(), '.autodev-data', 'claude-logs')
+// Agent 原始日志目录
+const LOGS_DIR = path.join(process.cwd(), '.autodev-data', 'claude-logs') // 保持路径兼容
 function ensureLogsDir() {
   if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true })
 }
@@ -58,7 +60,7 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-// 强杀进程树（claude 可能 spawn 子进程）
+// 强杀进程树（AI agent 可能 spawn 子进程）
 function killProcessTree(pid: number) {
   try {
     // 先尝试 SIGTERM
@@ -176,22 +178,7 @@ function loadPrompt(name: string): string {
   return fs.readFileSync(promptPath, 'utf-8')
 }
 
-// 构建 claude CLI 参数
-function buildClaudeArgs(prompt: string, project: ProjectData, maxTurns: number): string[] {
-  const args = [
-    '-p', prompt,
-    '--output-format', 'stream-json',
-    '--verbose',
-    '--max-turns', String(maxTurns),
-    '--model', project.model,
-    '--dangerously-skip-permissions',
-    '--disable-slash-commands',
-  ]
-  if (project.systemPrompt) {
-    args.push('--system-prompt', project.systemPrompt)
-  }
-  return args
-}
+// Agent CLI 参数构建已迁移到 provider.buildArgs()
 
 // 构建 initializer prompt
 function buildInitializerPrompt(project: ReturnType<typeof projectService.getProject>): string {
@@ -325,114 +312,63 @@ function looksLikeJson(text: string): boolean {
          (trimmed.startsWith('[') && trimmed.endsWith(']'))
 }
 
-// 解析 Claude API 响应 JSON 中的 content 字段，提取可读内容
-function parseThinkingContent(jsonStr: string): string {
-  try {
-    const obj = JSON.parse(jsonStr)
+// parseThinkingContent 已迁移到 server/providers/claude.ts
+// 为了测试兼容性，从 provider 重新导出
+import { parseThinkingContent } from '../providers/claude.js'
 
-    // 处理 {"content": [...], "role": "assistant", ...} 格式
-    const contentArr = obj.content || obj.message?.content
-    if (Array.isArray(contentArr)) {
-      const parts: string[] = []
-      for (const block of contentArr) {
-        if (block.type === 'tool_use') {
-          const name = block.name || 'unknown'
-          const input = block.input || {}
-          // 提取关键参数作为摘要
-          const summary = input.file_path || input.command || input.pattern || input.query || input.url || ''
-          parts.push(summary ? `${name} → ${summary}` : name)
-        } else if (block.type === 'text' && block.text) {
-          parts.push(block.text.slice(0, 200))
-        }
-      }
-      if (parts.length > 0) return parts.join(' | ')
-    }
-
-    // 处理单层 tool_use 对象
-    if (obj.type === 'tool_use' && obj.name) {
-      const input = obj.input || {}
-      const summary = input.file_path || input.command || input.pattern || input.query || input.url || ''
-      return summary ? `${obj.name} → ${summary}` : obj.name
-    }
-
-    // 处理有 message 字段的情况
-    if (typeof obj.message === 'string' && obj.message.trim()) {
-      return obj.message.slice(0, 200)
-    }
-
-    // 兜底：返回 type + model 等关键信息
-    const fallbackParts: string[] = []
-    if (obj.type) fallbackParts.push(obj.type)
-    if (obj.model) fallbackParts.push(obj.model)
-    if (obj.stop_reason) fallbackParts.push(`stop: ${obj.stop_reason}`)
-    if (fallbackParts.length > 0) return fallbackParts.join(' · ')
-  } catch {
-    // 解析失败
-  }
-  return jsonStr.slice(0, 200)
-}
-
-// 解析 stream-json 输出
-function parseStreamEvent(line: string, sessionId: string, projectId: string, agentIndex?: number) {
-  try {
-    const event = JSON.parse(line)
-
-    // 只将关键事件写入 UI 日志，跳过过于详细的流式片段和工具结果
-    // 原始输出已通过 logFile.stream.write() 完整保存到日志文件
-
-    if (event.type === 'assistant' && event.message) {
-      const content = typeof event.message === 'string'
-        ? event.message
-        : event.message.content?.map((c: Record<string, unknown>) => c.type === 'text' ? c.text : '').join('') || JSON.stringify(event.message)
-
-      if (content.trim()) {
-        detectHelpRequest(content, sessionId, projectId, agentIndex ?? 0)
-
-        // 循环检测：只对非 JSON 的 assistant 文本消息计数
-        if (!looksLikeJson(content)) {
-          checkLoopAndKill(sessionId, projectId, content, agentIndex ?? 0)
-        }
-
-        if (looksLikeJson(content)) {
-          // JSON 内容视为思考过程：解析 content 后实时广播，不持久化到 logs.jsonl
-          const parsed = parseThinkingContent(content)
-          const entry = { ...createLogEntry(sessionId, 'thinking', parsed, agentIndex), temporary: true }
-          broadcast({ type: 'log', projectId, entry })
-        } else {
-          const entry = createLogEntry(sessionId, 'assistant', content.slice(0, 800), agentIndex)
-          projectService.addLog(projectId, entry)
-          broadcast({ type: 'log', projectId, entry })
-        }
-      }
-    } else if (event.type === 'tool_use' || event.subtype === 'tool_use') {
-      const toolName = event.name || event.tool_name || 'unknown'
-      const toolInput = event.input ? JSON.stringify(event.input).slice(0, 200) : ''
-      const entry = createLogEntry(sessionId, 'tool_use', `调用工具: ${toolName}`, agentIndex, toolName, toolInput)
-      projectService.addLog(projectId, entry)
-      broadcast({ type: 'log', projectId, entry })
-    } else if (event.type === 'system' || event.type === 'result') {
-      // 跳过 Claude CLI 内部生命周期事件（hook、init 等），只保留有意义的系统消息
-      const noiseSubtypes = ['hook_started', 'hook_response', 'init', 'config']
-      if (noiseSubtypes.includes(event.subtype)) return
-
-      const content = event.result || event.message || JSON.stringify(event)
-      const entry = createLogEntry(sessionId, 'system', typeof content === 'string' ? content.slice(0, 500) : JSON.stringify(content).slice(0, 500), agentIndex)
-      projectService.addLog(projectId, entry)
-      broadcast({ type: 'log', projectId, entry })
-    }
-  } catch {
-    // 解析失败的行：如果看起来像 JSON 则作为临时思考显示，否则持久化
-    if (line.trim()) {
-      if (looksLikeJson(line.trim())) {
-        const parsed = parseThinkingContent(line.trim())
-        const entry = { ...createLogEntry(sessionId, 'thinking', parsed, agentIndex), temporary: true }
-        broadcast({ type: 'log', projectId, entry })
-      } else {
-        const entry = createLogEntry(sessionId, 'system', line.trim().slice(0, 500), agentIndex)
+// ===== Provider-agnostic 输出处理 =====
+// 将 provider.parseLine() 返回的标准化事件转为 UI 日志
+function handleProviderEvent(
+  event: AgentEvent,
+  sessionId: string,
+  projectId: string,
+  agentIndex?: number,
+): void {
+  switch (event.type) {
+    case 'text':
+      detectHelpRequest(event.content, sessionId, projectId, agentIndex ?? 0)
+      checkLoopAndKill(sessionId, projectId, event.content, agentIndex ?? 0)
+      {
+        const entry = createLogEntry(sessionId, 'assistant', event.content.slice(0, 800), agentIndex)
         projectService.addLog(projectId, entry)
         broadcast({ type: 'log', projectId, entry })
       }
-    }
+      break
+
+    case 'thinking':
+      {
+        const entry = { ...createLogEntry(sessionId, 'thinking', event.content, agentIndex), temporary: true }
+        broadcast({ type: 'log', projectId, entry })
+      }
+      break
+
+    case 'tool_use':
+      {
+        const entry = createLogEntry(sessionId, 'tool_use', `调用工具: ${event.name}`, agentIndex, event.name, event.input)
+        projectService.addLog(projectId, entry)
+        broadcast({ type: 'log', projectId, entry })
+      }
+      break
+
+    case 'system':
+      {
+        const entry = createLogEntry(sessionId, 'system', event.content, agentIndex)
+        projectService.addLog(projectId, entry)
+        broadcast({ type: 'log', projectId, entry })
+      }
+      break
+
+    case 'error':
+      {
+        const entry = createLogEntry(sessionId, 'error', event.content, agentIndex)
+        projectService.addLog(projectId, entry)
+        broadcast({ type: 'log', projectId, entry })
+      }
+      break
+
+    case 'ignore':
+    default:
+      break
   }
 }
 
@@ -575,8 +511,10 @@ function startFeatureWatcher(projectId: string) {
     broadcast({ type: 'progress', projectId, progress })
 
     if (progress.total > 0 && progress.passed === progress.total) {
-      projectService.updateProject(projectId, { status: 'completed' })
-      broadcast({ type: 'status', projectId, status: 'completed' })
+      const currentStatus = projectService.getProject(projectId)?.status
+      if (currentStatus) {
+        applyTransition(projectId, transition(currentStatus, { type: 'SESSION_COMPLETE', allDone: true }))
+      }
       stopAgent(projectId)
     }
   }, 3000)
@@ -593,7 +531,7 @@ function stopFeatureWatcher(projectId: string) {
   }
 }
 
-// ===== 通用 Claude Session 启动器 =====
+// ===== 通用 Agent Session 启动器 =====
 
 interface SpawnCloseContext {
   code: number | null
@@ -621,19 +559,20 @@ interface SpawnSessionConfig {
 }
 
 /**
- * 通用 Claude session 启动器，封装进程生命周期管理。
- * 处理：session 创建 → 日志文件 → spawn → PID 持久化 → runningAgents 注册 →
- *       heartbeat → stdout/stderr → close 清理 → error 处理
+ * 通用 Agent session 启动器，封装进程生命周期管理。
+ * 通过 provider 接口适配不同 AI 工具（Claude、Codex、Gemini 等）。
  */
-function spawnClaudeSession(config: SpawnSessionConfig): void {
+function spawnAgentSession(config: SpawnSessionConfig): void {
   const {
     projectId, project, sessionType, agentIndex, prompt, maxTurns,
     startMessage, heartbeat: useHeartbeat, heartbeatMessage,
     branch, featureId, onClose,
   } = config
 
+  const provider = requireProvider(project.provider || 'claude')
+
   const sessionId = uuidv4()
-  log.agent(`启动 ${sessionType} session (project=${projectId}, agent=${agentIndex}, session=${sessionId.slice(0, 8)})`)
+  log.agent(`启动 ${sessionType} session (project=${projectId}, agent=${agentIndex}, provider=${provider.name}, session=${sessionId.slice(0, 8)})`)
 
   const session: SessionData = {
     id: sessionId,
@@ -653,15 +592,30 @@ function spawnClaudeSession(config: SpawnSessionConfig): void {
   broadcast({ type: 'log', projectId, entry: sysEntry })
 
   const logFile = createLogFile(sessionId)
-  log.agent(`claude 日志文件: ${logFile.filePath}`)
+  log.agent(`日志文件: ${logFile.filePath}`)
 
-  const proc = spawn('claude', buildClaudeArgs(prompt, project, maxTurns), {
+  const args = provider.buildArgs({
+    prompt,
+    model: project.model,
+    maxTurns,
+    systemPrompt: project.systemPrompt,
+    projectDir: project.projectDir,
+    dangerousMode: true,
+    disableSlashCommands: true,
+    verbose: true,
+  })
+  const extraEnv = provider.buildEnv?.({
+    prompt, model: project.model, maxTurns,
+    projectDir: project.projectDir,
+  }) || {}
+
+  const proc = spawn(provider.binary, args, {
     cwd: project.projectDir,
-    env: { ...process.env },
+    env: { ...process.env, ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
-  log.agent(`claude 进程已启动 (pid=${proc.pid}, cwd=${project.projectDir}, model=${project.model})`)
+  log.agent(`${provider.displayName} 进程已启动 (pid=${proc.pid}, cwd=${project.projectDir}, model=${project.model})`)
 
   projectService.updateSession(projectId, sessionId, {
     pid: proc.pid,
@@ -725,7 +679,8 @@ function spawnClaudeSession(config: SpawnSessionConfig): void {
     buffer = lines.pop() || ''
     for (const line of lines) {
       if (line.trim()) {
-        parseStreamEvent(line, sessionId, projectId, agentIndex)
+        const event = provider.parseLine(line)
+        if (event) handleProviderEvent(event, sessionId, projectId, agentIndex)
       }
     }
   })
@@ -760,7 +715,7 @@ function spawnClaudeSession(config: SpawnSessionConfig): void {
     }
     broadcastAgentCount(projectId)
 
-    const endStatus = wasStopped ? 'stopped' : (code === 0 ? 'completed' : 'failed')
+    const endStatus = wasStopped ? 'stopped' : (provider.isSuccessExit(code ?? 1) ? 'completed' : 'failed')
     log.agent(`session 结束 (agent=${agentIndex}, status=${endStatus}, exit=${code})`)
     projectService.updateSession(projectId, sessionId, {
       status: endStatus,
@@ -809,7 +764,7 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
     ? buildInitializerPrompt(project)
     : buildCodingPrompt()
 
-  spawnClaudeSession({
+  spawnAgentSession({
     projectId, project,
     sessionType: type,
     agentIndex,
@@ -903,7 +858,7 @@ function startParallelSession(projectId: string, agentIndex: number) {
       return
     }
 
-    spawnClaudeSession({
+    spawnAgentSession({
       projectId, project,
       sessionType: 'coding',
       agentIndex,
@@ -919,7 +874,7 @@ function startParallelSession(projectId: string, agentIndex: number) {
         }
         releaseFeature(projectId, feature.id)
 
-        if (!wasStopped && code === 0) {
+        if (!wasStopped && endStatus === 'completed') {
           // 成功完成，清理重试计数
           featureRetryCount.delete(`${projectId}:${feature.id}`)
           withGitLock(projectId, async () => {
@@ -992,18 +947,18 @@ function startParallelSession(projectId: string, agentIndex: number) {
   })
 }
 
-// 启动 Agent Teams session（单个 Claude 会话，内部协调多 Agent）
+// 启动 Agent Teams session（provider 支持时，内部协调多 Agent）
 function startAgentTeamsSession(projectId: string) {
   const project = projectService.getProject(projectId)
   if (!project) return
 
-  spawnClaudeSession({
+  spawnAgentSession({
     projectId, project,
     sessionType: 'agent-teams',
     agentIndex: 0,
     prompt: buildAgentTeamsPrompt(project),
     maxTurns: 500,
-    startMessage: '🚀 启动 Agent Teams 模式 — Claude 将自主协调多个子 Agent 完成全流程开发',
+    startMessage: '🚀 启动 Agent Teams 模式 — AI 将自主协调多个子 Agent 完成全流程开发',
     heartbeat: true,
     heartbeatMessage: 'Agent Teams 正在初始化，请稍候...',
     onClose({ wasStopped }) {
@@ -1061,7 +1016,7 @@ export function initRecovery() {
       if (session.status !== 'running') continue
 
       if (session.pid && isProcessAlive(session.pid)) {
-        log.server(`杀掉孤儿 claude 进程 PID=${session.pid} (session=${session.id.slice(0, 8)})`)
+        log.server(`杀掉孤儿 agent 进程 PID=${session.pid} (session=${session.id.slice(0, 8)})`)
         killProcessTree(session.pid)
       }
 
@@ -1229,7 +1184,7 @@ export function startAppendInitializer(projectId: string, appendSpec: string) {
 
   startFeatureWatcher(projectId)
 
-  spawnClaudeSession({
+  spawnAgentSession({
     projectId, project,
     sessionType: 'initializer',
     agentIndex: 99,
@@ -1267,7 +1222,7 @@ export function startReviewSession(projectId: string, featureIds: string[], inst
 
   log.agent(`启动审查修改 session (project=${projectId}, features=${selected.length})`)
 
-  spawnClaudeSession({
+  spawnAgentSession({
     projectId, project,
     sessionType: 'initializer',
     agentIndex: 98,
@@ -1295,8 +1250,7 @@ export function confirmReview(projectId: string) {
 
   log.agent(`确认审查，开始编码 (project=${projectId})`)
 
-  projectService.updateProject(projectId, { status: 'running' })
-  broadcast({ type: 'status', projectId, status: 'running' })
+  applyTransition(projectId, transition('reviewing', { type: 'REVIEW_CONFIRMED' }))
   startFeatureWatcher(projectId)
 
   // Agent Teams 模式：审查确认后启动 agent-teams session
@@ -1316,8 +1270,7 @@ export function confirmReview(projectId: string) {
     log.agent(`并行模式: ${agentCount} 个 Agent, ${features.length} 个待完成 Feature`)
 
     if (agentCount === 0) {
-      projectService.updateProject(projectId, { status: 'completed' })
-      broadcast({ type: 'status', projectId, status: 'completed' })
+      applyTransition(projectId, transition('running', { type: 'SESSION_COMPLETE', allDone: true }))
       return
     }
 

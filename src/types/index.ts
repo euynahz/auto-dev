@@ -18,6 +18,7 @@ export interface Project {
   name: string
   spec: string
   status: ProjectStatus
+  provider: string
   model: string
   concurrency: number
   useAgentTeams: boolean
@@ -96,6 +97,7 @@ export interface CreateProjectRequest {
   spec: string
   path?: string
   forceClean?: boolean
+  provider?: string
   model?: string
   concurrency?: number
   useAgentTeams?: boolean
@@ -107,6 +109,7 @@ export interface ImportProjectRequest {
   name: string
   path: string
   taskPrompt?: string
+  provider?: string
   model?: string
   concurrency?: number
   useAgentTeams?: boolean

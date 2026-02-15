@@ -60,7 +60,7 @@ export function checkDir(dirPath: string): { exists: boolean; hasContent: boolea
 }
 
 // 创建项目
-export function createProject(name: string, spec: string, model = 'claude-opus-4-6', concurrency = 1, useAgentTeams = false, systemPrompt?: string, reviewBeforeCoding?: boolean, projectDir?: string, forceClean?: boolean): ProjectData {
+export function createProject(name: string, spec: string, model = 'claude-opus-4-6', concurrency = 1, useAgentTeams = false, systemPrompt?: string, reviewBeforeCoding?: boolean, projectDir?: string, forceClean?: boolean, provider = 'claude'): ProjectData {
   const id = uuidv4()
   const now = new Date().toISOString()
 
@@ -86,6 +86,7 @@ export function createProject(name: string, spec: string, model = 'claude-opus-4
     name,
     spec,
     status: 'idle',
+    provider,
     model,
     concurrency: Math.max(1, Math.min(8, concurrency)),
     useAgentTeams,
@@ -109,7 +110,7 @@ export function createProject(name: string, spec: string, model = 'claude-opus-4
 }
 
 // 导入已有项目
-export function importProject(name: string, dirPath: string, model = 'claude-opus-4-6', concurrency = 1, useAgentTeams = false, systemPrompt?: string, reviewBeforeCoding?: boolean, taskPrompt?: string): ProjectData {
+export function importProject(name: string, dirPath: string, model = 'claude-opus-4-6', concurrency = 1, useAgentTeams = false, systemPrompt?: string, reviewBeforeCoding?: boolean, taskPrompt?: string, provider = 'claude'): ProjectData {
   if (!isPathSafe(dirPath)) throw new Error('路径不在允许范围内')
   // 验证目录存在
   if (!fs.existsSync(dirPath)) {
@@ -174,6 +175,7 @@ export function importProject(name: string, dirPath: string, model = 'claude-opu
     name,
     spec,
     status: 'idle',
+    provider,
     model,
     concurrency: Math.max(1, Math.min(8, concurrency)),
     useAgentTeams,

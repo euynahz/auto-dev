@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import * as projectService from '../services/project.js'
 import * as agentService from '../services/agent.js'
+import { getProviderSummaries } from '../providers/registry.js'
 import { log } from '../lib/logger.js'
 
 const router = Router()
@@ -54,6 +55,11 @@ router.get('/projects/:id', (req, res) => {
   })
 })
 
+// 获取可用 AI providers
+router.get('/providers', (_req, res) => {
+  res.json(getProviderSummaries())
+})
+
 // 检查目录内容
 router.post('/check-dir', (req, res) => {
   const { path: dirPath } = req.body
@@ -67,13 +73,13 @@ router.post('/check-dir', (req, res) => {
 
 // 创建项目
 router.post('/projects', (req, res) => {
-  const { name, spec, path: dirPath, forceClean, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding } = req.body
+  const { name, spec, path: dirPath, forceClean, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, provider } = req.body
   if (!name || !spec) {
     return res.status(400).json({ message: '名称和需求描述不能为空' })
   }
 
-  log.api(`POST /projects — 创建项目: ${name} (path=${dirPath || '(auto)'}, model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
-  const project = projectService.createProject(name, spec, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, dirPath, forceClean)
+  log.api(`POST /projects — 创建项目: ${name} (path=${dirPath || '(auto)'}, provider=${provider || 'claude'}, model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
+  const project = projectService.createProject(name, spec, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, dirPath, forceClean, provider)
   res.json({
     ...project,
     features: [],
@@ -84,14 +90,14 @@ router.post('/projects', (req, res) => {
 
 // 导入已有项目
 router.post('/projects/import', (req, res) => {
-  const { name, path: dirPath, taskPrompt, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding } = req.body
+  const { name, path: dirPath, taskPrompt, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, provider } = req.body
   if (!name || !dirPath) {
     return res.status(400).json({ message: '名称和目录路径不能为空' })
   }
 
   log.api(`POST /projects/import — 导入项目: ${name} (path=${dirPath}, agentTeams=${!!useAgentTeams})`)
   try {
-    const project = projectService.importProject(name, dirPath, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, taskPrompt)
+    const project = projectService.importProject(name, dirPath, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, taskPrompt, provider)
     res.json({
       ...project,
       features: [],
