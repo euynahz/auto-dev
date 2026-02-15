@@ -17,11 +17,20 @@ The underlying AI tooling is fully decoupled, adapting to different AI coding to
 - **Capability Declaration** — Each provider declares its supported features (streaming / maxTurns / systemPrompt / agentTeams / modelSelection / dangerousMode); the system adapts automatically
 - **`GET /api/providers`** — Frontend dynamically fetches available providers and their capabilities; UI adapts on the fly
 
+### 🧠 Two-Phase Initialization
+
+Inspired by structured planning methodologies, AutoDev splits project initialization into two sequential phases:
+
+- **Phase 1: Architecture Analysis** — A dedicated agent reads the project spec and produces `architecture.md`: tech stack, directory structure, core abstractions, API design, data model, and key architectural decisions
+- **Phase 2: Task Decomposition** — The Initializer Agent reads both `app_spec.txt` and `architecture.md` to decompose requirements into features, ensuring every task aligns with the architectural blueprint
+- **Feature Context Files** — Each feature gets a `.features/feature-{id}.md` file containing architecture context, related files, dependency graph, and implementation notes — giving coding agents full situational awareness without relying on prompt injection
+- **Automatic Chaining** — Phase 1 completes → 3s delay → Phase 2 starts automatically; no manual intervention needed
+
 ### 🧠 Based on Anthropic's Long-Running Agent Research
 
 Implements the core patterns from Anthropic's paper [Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents):
 
-- **Dual-Agent Architecture** — An Initializer Agent decomposes requirements into a Feature List; Coding Agents implement them one by one
+- **Dual-Agent Architecture** — An Architecture + Initializer pipeline decomposes requirements into a Feature List; Coding Agents implement them one by one
 - **feature_list.json as Single Source of Truth** — JSON format where only the `passes` field can be modified, preventing agents from tampering with or omitting requirements
 - **Incremental Progress** — Each session tackles one feature, commits on completion, ensuring the codebase is always mergeable
 - **Context Bridging** — Uses `claude-progress.txt` + `git log` to bring new sessions up to speed on project state, solving the memory fragmentation problem across context windows
@@ -33,7 +42,7 @@ Goes beyond Anthropic's original single-agent sequential approach with full para
 - Each agent works on an isolated Git branch (`agent-{index}/feature-{featureId}`), with zero interference
 - `claimedFeatures` Map atomically assigns features, guaranteeing no two agents claim the same task
 - Git operations are serialized through a Promise queue to avoid concurrency conflicts
-- Completed features are automatically merged back to main via `git merge --no-ff`; conflicts are flagged for manual resolution
+- Completed features are automatically merged back to main via `git merge --no-ff`; merge conflicts are automatically resolved by a dedicated AI agent
 - Setting `concurrency = 1` gracefully degrades to sequential mode, fully backward-compatible
 
 ### 🤖 Agent Teams Mode
@@ -84,6 +93,15 @@ Full visibility throughout — no black boxes:
 - **Runtime Requirement Appending** — Append new requirements while the project is running; the system automatically decomposes them into features and adds them to the task queue
 - All panels support fullscreen toggle; Feature List, Agent Log, and Session History can each be viewed independently in fullscreen
 - WebSocket push updates with zero-latency refresh
+
+### ✅ Quality Gate
+
+Optional per-project verification command that runs before any feature is marked as passed:
+
+- Configure a `verifyCommand` (e.g. `npm test && npm run lint`) when creating or importing a project
+- Coding agents (serial and parallel) automatically run the command after implementing each feature
+- If verification fails, the agent attempts to fix the issues; after 2 failed attempts, the feature stays `passes: false`
+- Ensures code quality without relying on agents to self-assess — the gate is objective and automated
 
 ### 🤝 Human-in-the-Loop Collaboration
 
@@ -213,11 +231,13 @@ The frontend provider selector automatically picks up the new option — zero UI
 │   │   ├── project.ts         # Project CRUD + feature sync + path sandboxing
 │   │   └── state-machine.ts   # Project state machine (explicit transition table)
 │   ├── prompts/
-│   │   ├── initializer.md     # Initializer Agent prompt
+│   │   ├── architecture.md    # Architecture analysis prompt (phase 1)
+│   │   ├── initializer.md     # Task decomposition prompt (phase 2, reads architecture.md)
 │   │   ├── append-initializer.md # Append requirement decomposition prompt
 │   │   ├── coding.md          # Sequential coding Agent prompt
 │   │   ├── coding-parallel.md # Parallel coding Agent prompt
-│   │   └── agent-teams.md     # Agent Teams end-to-end prompt
+│   │   ├── agent-teams.md     # Agent Teams end-to-end prompt
+│   │   └── merge-resolve.md   # AI merge conflict resolution prompt
 │   └── types.ts
 ├── src/                       # Frontend
 │   ├── pages/
@@ -269,13 +289,23 @@ WebSocket `/ws` push message types: `log`, `status`, `progress`, `feature_update
 │          User Input / Import Existing Project        │
 └──────────────────────┬──────────────────────────────┘
                        ▼
+            ┌────────────────────┐
+            │ Architecture Agent │  Phase 1
+            │                    │
+            │ • Read app_spec    │
+            │ • Produce          │
+            │   architecture.md  │
+            └────────┬───────────┘
+                     ▼
               ┌─────────────────┐
-              │ Initializer Agent│  Session 1
+              │ Initializer Agent│  Phase 2
               │                 │
-              │ • Read app_spec │
+              │ • Read arch doc │
               │ • Generate      │
               │   feature_list  │
               │   .json         │
+              │ • Generate      │
+              │   .features/    │
               │ • Create init.sh│
               │ • git init      │
               └────────┬────────┘
@@ -366,8 +396,8 @@ Multiple Coding Agents work simultaneously, each on an isolated Git branch devel
      │          Git Merge Queue (serialized)         │
      │                                              │
      │  → Success: merge to main, claim next feature│
-     │  → Conflict: flag for manual resolution,     │
-     │    agent skips and continues                  │
+     │  → Conflict: AI agent resolves automatically;│
+     │    falls back to manual only if AI fails      │
      └──────────────────────────────────────────────┘
 ```
 
@@ -379,7 +409,7 @@ Key mechanisms in parallel mode:
 | Branch Isolation | `agent-{index}/feature-{featureId}`, zero interference |
 | Git Lock | Promise queue serializes all git operations |
 | Auto-Merge | `git merge --no-ff` back to main, preserving branch history |
-| Conflict Handling | On merge failure, `git merge --abort` and flag for manual intervention |
+| Conflict Handling | AI-powered: on merge failure, a dedicated conflict-resolution agent is spawned to read markers, resolve intelligently, and commit; falls back to manual only if AI fails |
 | Error Retry | Agent auto-retries with a new feature after 5 seconds on abnormal exit |
 
 ### Lifecycle State Machine
