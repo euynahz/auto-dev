@@ -14,6 +14,7 @@ import type { ProjectStatus } from '@/types'
 const statusConfig: Record<ProjectStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'success' | 'warning' }> = {
   idle: { label: '空闲', variant: 'secondary' },
   initializing: { label: '初始化中', variant: 'warning' },
+  reviewing: { label: '待审查', variant: 'warning' },
   running: { label: '运行中', variant: 'default' },
   paused: { label: '已暂停', variant: 'warning' },
   completed: { label: '已完成', variant: 'success' },

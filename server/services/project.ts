@@ -89,7 +89,7 @@ export function createProject(name: string, spec: string, model = 'claude-opus-4
   writeJson(path.join(projDataDir, 'project.json'), project)
   writeJson(path.join(projDataDir, 'features.json'), [])
   writeJson(path.join(projDataDir, 'sessions.json'), [])
-  writeJson(path.join(projDataDir, 'logs.json'), [])
+  // logs.jsonl 由 addLog 按需创建（append-only）
 
   log.project(`创建项目: ${name} (id=${id}, dir=${projectWorkDir}, agentTeams=${useAgentTeams})`)
   return project
@@ -176,7 +176,7 @@ export function importProject(name: string, dirPath: string, model = 'claude-opu
   writeJson(path.join(projDataDir, 'project.json'), project)
   writeJson(path.join(projDataDir, 'features.json'), [])
   writeJson(path.join(projDataDir, 'sessions.json'), [])
-  writeJson(path.join(projDataDir, 'logs.json'), [])
+  // logs.jsonl 由 addLog 按需创建（append-only）
 
   // 自动生成 app_spec.txt（导入的项目通常没有这个文件，initializer 需要它）
   const specPath = path.join(dirPath, 'app_spec.txt')
@@ -324,20 +324,73 @@ export function updateSession(projectId: string, sessionId: string, updates: Par
   }
 }
 
-// ===== 日志管理 =====
+// ===== 日志管理（JSONL append-only） =====
+
+const LOG_MAX_ENTRIES = 5000
+
+/** 获取 .jsonl 日志文件路径 */
+function getLogFilePath(projectId: string): string {
+  return path.join(getProjectDir(projectId), 'logs.jsonl')
+}
+
+/** 获取旧版 .json 日志文件路径 */
+function getLegacyLogFilePath(projectId: string): string {
+  return path.join(getProjectDir(projectId), 'logs.json')
+}
+
+/** 如果旧的 logs.json 存在，迁移为 logs.jsonl */
+function migrateLogsIfNeeded(projectId: string): void {
+  const legacyPath = getLegacyLogFilePath(projectId)
+  const jsonlPath = getLogFilePath(projectId)
+  if (!fs.existsSync(legacyPath)) return
+  // 如果 jsonl 已存在，只删除旧文件
+  if (fs.existsSync(jsonlPath)) {
+    fs.unlinkSync(legacyPath)
+    return
+  }
+  try {
+    const entries = JSON.parse(fs.readFileSync(legacyPath, 'utf-8')) as LogEntryData[]
+    if (Array.isArray(entries) && entries.length > 0) {
+      const lines = entries.slice(-LOG_MAX_ENTRIES).map((e) => JSON.stringify(e))
+      fs.writeFileSync(jsonlPath, lines.join('\n') + '\n')
+    }
+    fs.unlinkSync(legacyPath)
+    log.project(`已迁移 logs.json → logs.jsonl (project=${projectId})`)
+  } catch {
+    // 迁移失败不阻塞，删除旧文件继续
+    try { fs.unlinkSync(legacyPath) } catch { /* ignore */ }
+  }
+}
 
 export function getLogs(projectId: string): LogEntryData[] {
-  return readJson<LogEntryData[]>(path.join(getProjectDir(projectId), 'logs.json'), [])
+  migrateLogsIfNeeded(projectId)
+  const filePath = getLogFilePath(projectId)
+  if (!fs.existsSync(filePath)) return []
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const lines = content.split('\n').filter((l) => l.trim())
+    const entries: LogEntryData[] = []
+    for (const line of lines) {
+      try { entries.push(JSON.parse(line)) } catch { /* skip malformed lines */ }
+    }
+    // 如果超出上限，截断文件并返回最后 N 条
+    if (entries.length > LOG_MAX_ENTRIES) {
+      const trimmed = entries.slice(-LOG_MAX_ENTRIES)
+      const trimmedLines = trimmed.map((e) => JSON.stringify(e))
+      fs.writeFileSync(filePath, trimmedLines.join('\n') + '\n')
+      return trimmed
+    }
+    return entries
+  } catch {
+    return []
+  }
 }
 
 export function addLog(projectId: string, entry: LogEntryData) {
-  const logs = getLogs(projectId)
-  logs.push(entry)
-  // 只保留最近 5000 条日志
-  if (logs.length > 5000) {
-    logs.splice(0, logs.length - 5000)
-  }
-  writeJson(path.join(getProjectDir(projectId), 'logs.json'), logs)
+  migrateLogsIfNeeded(projectId)
+  const filePath = getLogFilePath(projectId)
+  ensureDir(path.dirname(filePath))
+  fs.appendFileSync(filePath, JSON.stringify(entry) + '\n')
 }
 
 // 计算进度

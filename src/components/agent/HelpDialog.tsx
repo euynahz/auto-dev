@@ -31,6 +31,7 @@ export function HelpDialog({ projectId, projectName }: Props) {
   const [response, setResponse] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [notifiedIds, setNotifiedIds] = useState<Set<string>>(new Set())
+  const [open, setOpen] = useState(true)
 
   // 当前待处理的请求（取第一个）
   const current: HelpRequest | undefined = helpRequests[0]
@@ -42,7 +43,7 @@ export function HelpDialog({ projectId, projectName }: Props) {
     }
   }, [])
 
-  // 新请求到达时发送桌面通知
+  // 新请求到达时发送桌面通知 & 自动弹出
   useEffect(() => {
     if (!current || notifiedIds.has(current.id)) return
     sendDesktopNotification(
@@ -50,6 +51,7 @@ export function HelpDialog({ projectId, projectName }: Props) {
       current.message.slice(0, 120)
     )
     setNotifiedIds((prev) => new Set(prev).add(current.id))
+    setOpen(true)
   }, [current, projectName, notifiedIds])
 
   const handleSubmit = useCallback(async () => {
@@ -75,9 +77,22 @@ export function HelpDialog({ projectId, projectName }: Props) {
 
   if (!current) return null
 
+  // Dialog 已关闭时，显示浮动角标
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-amber-600 transition-colors cursor-pointer animate-pulse"
+      >
+        <MessageCircleWarning className="h-4 w-4" />
+        {helpRequests.length} 个待处理协助
+      </button>
+    )
+  }
+
   return (
-    <Dialog open onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-[540px]" onPointerDownOutside={(e) => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="sm:max-w-[540px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageCircleWarning className="h-5 w-5 text-amber-400" />

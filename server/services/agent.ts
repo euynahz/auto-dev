@@ -371,7 +371,7 @@ function parseStreamEvent(line: string, sessionId: string, projectId: string, ag
         }
 
         if (looksLikeJson(content)) {
-          // JSON 内容视为思考过程：解析 content 后实时广播，不持久化到 logs.json
+          // JSON 内容视为思考过程：解析 content 后实时广播，不持久化到 logs.jsonl
           const parsed = parseThinkingContent(content)
           const entry = { ...createLogEntry(sessionId, 'thinking', parsed, agentIndex), temporary: true }
           broadcast({ type: 'log', projectId, entry })
@@ -552,37 +552,69 @@ function stopFeatureWatcher(projectId: string) {
   }
 }
 
-// 启动一个 session（串行模式，concurrency=1 时使用）
-function startSession(projectId: string, type: 'initializer' | 'coding', agentIndex = 0) {
-  const project = projectService.getProject(projectId)
-  if (!project) return
+// ===== 通用 Claude Session 启动器 =====
+
+interface SpawnCloseContext {
+  code: number | null
+  wasStopped: boolean
+  endStatus: 'completed' | 'failed' | 'stopped'
+  sessionId: string
+  session: SessionData
+  agentIndex: number
+  projectId: string
+}
+
+interface SpawnSessionConfig {
+  projectId: string
+  project: ProjectData
+  sessionType: SessionData['type']
+  agentIndex: number
+  prompt: string
+  maxTurns: number
+  startMessage: string       // 🚀 启动 xxx Session...
+  heartbeat?: boolean         // 是否启用 15s 无输出心跳提示
+  heartbeatMessage?: string   // 心跳提示文字
+  branch?: string
+  featureId?: string
+  onClose?: (ctx: SpawnCloseContext) => void  // close 后的自定义行为
+}
+
+/**
+ * 通用 Claude session 启动器，封装进程生命周期管理。
+ * 处理：session 创建 → 日志文件 → spawn → PID 持久化 → runningAgents 注册 →
+ *       heartbeat → stdout/stderr → close 清理 → error 处理
+ */
+function spawnClaudeSession(config: SpawnSessionConfig): void {
+  const {
+    projectId, project, sessionType, agentIndex, prompt, maxTurns,
+    startMessage, heartbeat: useHeartbeat, heartbeatMessage,
+    branch, featureId, onClose,
+  } = config
 
   const sessionId = uuidv4()
-  log.agent(`启动 ${type} session (project=${projectId}, agent=${agentIndex}, session=${sessionId.slice(0, 8)})`)
+  log.agent(`启动 ${sessionType} session (project=${projectId}, agent=${agentIndex}, session=${sessionId.slice(0, 8)})`)
+
   const session: SessionData = {
     id: sessionId,
     projectId,
-    type,
+    type: sessionType,
     status: 'running',
     agentIndex,
     startedAt: new Date().toISOString(),
+    ...(branch ? { branch } : {}),
+    ...(featureId ? { featureId } : {}),
   }
   projectService.addSession(projectId, session)
   broadcast({ type: 'session_update', projectId, session })
 
-  const prompt = type === 'initializer'
-    ? buildInitializerPrompt(project)
-    : buildCodingPrompt()
-
-  const sysEntry = createLogEntry(sessionId, 'system', `🚀 启动 ${type === 'initializer' ? '初始化' : '编码'} Session...`, agentIndex)
+  const sysEntry = createLogEntry(sessionId, 'system', startMessage, agentIndex)
   projectService.addLog(projectId, sysEntry)
   broadcast({ type: 'log', projectId, entry: sysEntry })
 
-  // 创建日志文件
   const logFile = createLogFile(sessionId)
   log.agent(`claude 日志文件: ${logFile.filePath}`)
 
-  const proc = spawn('claude', buildClaudeArgs(prompt, project, 200), {
+  const proc = spawn('claude', buildClaudeArgs(prompt, project, maxTurns), {
     cwd: project.projectDir,
     env: { ...process.env },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -590,7 +622,6 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
 
   log.agent(`claude 进程已启动 (pid=${proc.pid}, cwd=${project.projectDir}, model=${project.model})`)
 
-  // 持久化 PID 和日志文件路径到 session
   projectService.updateSession(projectId, sessionId, {
     pid: proc.pid,
     logFile: logFile.filePath,
@@ -599,28 +630,32 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
   if (!runningAgents.has(projectId)) {
     runningAgents.set(projectId, new Map())
   }
-  const agentInstance: AgentInstance = { process: proc, sessionId, stopped: false, agentIndex }
+  const agentInstance: AgentInstance = {
+    process: proc, sessionId, stopped: false, agentIndex,
+    ...(featureId ? { featureId } : {}),
+    ...(branch ? { branch } : {}),
+  }
   runningAgents.get(projectId)!.set(agentIndex, agentInstance)
   broadcastAgentCount(projectId)
 
-  // Heartbeat: if no output within 15s, log a waiting message
+  // 可选心跳：15s 无输出提示
   let gotOutput = false
-  const heartbeat = setTimeout(() => {
+  const heartbeatTimer = useHeartbeat ? setTimeout(() => {
     if (!gotOutput) {
-      const waitEntry = createLogEntry(sessionId, 'system', 'Agent 正在初始化，请稍候...', agentIndex)
+      const waitEntry = createLogEntry(sessionId, 'system', heartbeatMessage || 'Agent 正在初始化，请稍候...', agentIndex)
       projectService.addLog(projectId, waitEntry)
       broadcast({ type: 'log', projectId, entry: waitEntry })
     }
-  }, 15000)
+  }, 15000) : null
 
   let buffer = ''
   proc.stdout?.on('data', (chunk: Buffer) => {
     if (!gotOutput) {
       gotOutput = true
-      clearTimeout(heartbeat)
+      if (heartbeatTimer) clearTimeout(heartbeatTimer)
     }
     const raw = chunk.toString()
-    logFile.stream.write(raw) // 写入原始输出到日志文件
+    logFile.stream.write(raw)
     buffer += raw
     const lines = buffer.split('\n')
     buffer = lines.pop() || ''
@@ -634,10 +669,10 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
   proc.stderr?.on('data', (chunk: Buffer) => {
     const text = chunk.toString().trim()
     if (text) {
-      logFile.stream.write(`[STDERR] ${text}\n`) // 写入 stderr 到日志文件
+      logFile.stream.write(`[STDERR] ${text}\n`)
       if (!gotOutput) {
         gotOutput = true
-        clearTimeout(heartbeat)
+        if (heartbeatTimer) clearTimeout(heartbeatTimer)
       }
       const entry = createLogEntry(sessionId, 'error', text.slice(0, 500), agentIndex)
       projectService.addLog(projectId, entry)
@@ -646,10 +681,11 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
   })
 
   proc.on('close', (code) => {
-    clearTimeout(heartbeat)
+    if (heartbeatTimer) clearTimeout(heartbeatTimer)
     logFile.stream.write(`\n=== Session ended at ${new Date().toISOString()} (exit code: ${code}) ===\n`)
     logFile.stream.end()
     recentMessages.delete(sessionId)
+
     const agents = runningAgents.get(projectId)
     const agent = agents?.get(agentIndex)
     const wasStopped = agent?.stopped || false
@@ -669,80 +705,17 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
     const updatedSession = { ...session, status: endStatus as SessionData['status'], endedAt: new Date().toISOString() }
     broadcast({ type: 'session_update', projectId, session: updatedSession })
 
-    projectService.syncFeaturesFromDisk(projectId)
-    const progress = projectService.getProgress(projectId)
-    broadcast({ type: 'progress', projectId, progress })
-
     const endEntry = createLogEntry(sessionId, 'system',
       `Session 结束 (${endStatus}, exit code: ${code})`, agentIndex)
     projectService.addLog(projectId, endEntry)
     broadcast({ type: 'log', projectId, entry: endEntry })
 
-    // initializer 结束后，如果已生成 features，将状态从 initializing 转为 running 或 reviewing
-    const currentStatus = projectService.getProject(projectId)?.status
-    if (currentStatus === 'initializing' && progress.total > 0) {
-      const latestProject = projectService.getProject(projectId)
-      if (latestProject?.reviewBeforeCoding) {
-        // 进入审查状态，不自动启动 coding
-        projectService.updateProject(projectId, { status: 'reviewing' })
-        broadcast({ type: 'status', projectId, status: 'reviewing' })
-        log.agent(`初始化完成，进入审查模式 (${progress.total} 个 feature)`)
-      } else {
-        projectService.updateProject(projectId, { status: 'running' })
-        broadcast({ type: 'status', projectId, status: 'running' })
-        log.agent(`初始化完成，features 已生成 (${progress.total} 个)，状态转为 running`)
-      }
-    } else if (currentStatus === 'initializing' && progress.total === 0 && !wasStopped) {
-      // 初始化失败且未生成任何 feature，标记为 error
-      projectService.updateProject(projectId, { status: 'error' })
-      broadcast({ type: 'status', projectId, status: 'error' })
-      stopFeatureWatcher(projectId)
-      log.agent(`初始化失败，未生成任何 feature，状态转为 error`)
-    }
-
-    // reviewing 状态下不自动启动 coding session
-    const postStatus = projectService.getProject(projectId)?.status
-    if (!wasStopped && progress.total > 0 && progress.passed < progress.total && postStatus !== 'reviewing') {
-      const currentProject = projectService.getProject(projectId)
-      if (currentProject && currentProject.concurrency > 1) {
-        const nextEntry = createLogEntry(sessionId, 'system', `Agent ${agentIndex}: 3 秒后尝试领取下一个 Feature...`, agentIndex)
-        projectService.addLog(projectId, nextEntry)
-        broadcast({ type: 'log', projectId, entry: nextEntry })
-
-        setTimeout(() => {
-          const proj = projectService.getProject(projectId)
-          if (proj && proj.status === 'running') {
-            startParallelSession(projectId, agentIndex)
-          }
-        }, 3000)
-      } else {
-        const nextEntry = createLogEntry(sessionId, 'system', '3 秒后启动下一个 Session...', agentIndex)
-        projectService.addLog(projectId, nextEntry)
-        broadcast({ type: 'log', projectId, entry: nextEntry })
-
-        setTimeout(() => {
-          const currentProj = projectService.getProject(projectId)
-          if (currentProj && currentProj.status === 'running') {
-            startSession(projectId, 'coding', 0)
-          }
-        }, 3000)
-      }
-    } else if (progress.total > 0 && progress.passed >= progress.total) {
-      projectService.updateProject(projectId, { status: 'completed' })
-      broadcast({ type: 'status', projectId, status: 'completed' })
-      stopFeatureWatcher(projectId)
-    } else if (wasStopped) {
-      const agents2 = runningAgents.get(projectId)
-      if (!agents2 || agents2.size === 0) {
-        projectService.updateProject(projectId, { status: 'paused' })
-        broadcast({ type: 'status', projectId, status: 'paused' })
-        stopFeatureWatcher(projectId)
-      }
-    }
+    // 调用自定义 close 回调
+    onClose?.({ code, wasStopped, endStatus: endStatus as SpawnCloseContext['endStatus'], sessionId, session: updatedSession, agentIndex, projectId })
   })
 
   proc.on('error', (err) => {
-    clearTimeout(heartbeat)
+    if (heartbeatTimer) clearTimeout(heartbeatTimer)
     logFile.stream.end()
     const entry = createLogEntry(sessionId, 'error', `进程错误: ${err.message}`, agentIndex)
     projectService.addLog(projectId, entry)
@@ -756,6 +729,85 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
       broadcast({ type: 'status', projectId, status: 'error' })
     }
     broadcastAgentCount(projectId)
+  })
+}
+
+// 启动一个 session（串行模式，concurrency=1 时使用）
+function startSession(projectId: string, type: 'initializer' | 'coding', agentIndex = 0) {
+  const project = projectService.getProject(projectId)
+  if (!project) return
+
+  const prompt = type === 'initializer'
+    ? buildInitializerPrompt(project)
+    : buildCodingPrompt()
+
+  spawnClaudeSession({
+    projectId, project,
+    sessionType: type,
+    agentIndex,
+    prompt,
+    maxTurns: 200,
+    startMessage: `🚀 启动 ${type === 'initializer' ? '初始化' : '编码'} Session...`,
+    heartbeat: true,
+    onClose({ wasStopped, endStatus, sessionId, agentIndex: ai }) {
+      projectService.syncFeaturesFromDisk(projectId)
+      const progress = projectService.getProgress(projectId)
+      broadcast({ type: 'progress', projectId, progress })
+
+      // initializer 结束后，如果已生成 features，将状态从 initializing 转为 running 或 reviewing
+      const currentStatus = projectService.getProject(projectId)?.status
+      if (currentStatus === 'initializing' && progress.total > 0) {
+        const latestProject = projectService.getProject(projectId)
+        if (latestProject?.reviewBeforeCoding) {
+          projectService.updateProject(projectId, { status: 'reviewing' })
+          broadcast({ type: 'status', projectId, status: 'reviewing' })
+          log.agent(`初始化完成，进入审查模式 (${progress.total} 个 feature)`)
+        } else {
+          projectService.updateProject(projectId, { status: 'running' })
+          broadcast({ type: 'status', projectId, status: 'running' })
+          log.agent(`初始化完成，features 已生成 (${progress.total} 个)，状态转为 running`)
+        }
+      } else if (currentStatus === 'initializing' && progress.total === 0 && !wasStopped) {
+        projectService.updateProject(projectId, { status: 'error' })
+        broadcast({ type: 'status', projectId, status: 'error' })
+        stopFeatureWatcher(projectId)
+        log.agent(`初始化失败，未生成任何 feature，状态转为 error`)
+      }
+
+      // reviewing 状态下不自动启动 coding session
+      const postStatus = projectService.getProject(projectId)?.status
+      if (!wasStopped && progress.total > 0 && progress.passed < progress.total && postStatus !== 'reviewing') {
+        const currentProject = projectService.getProject(projectId)
+        if (currentProject && currentProject.concurrency > 1) {
+          const nextEntry = createLogEntry(sessionId, 'system', `Agent ${ai}: 3 秒后尝试领取下一个 Feature...`, ai)
+          projectService.addLog(projectId, nextEntry)
+          broadcast({ type: 'log', projectId, entry: nextEntry })
+          setTimeout(() => {
+            const proj = projectService.getProject(projectId)
+            if (proj && proj.status === 'running') startParallelSession(projectId, ai)
+          }, 3000)
+        } else {
+          const nextEntry = createLogEntry(sessionId, 'system', '3 秒后启动下一个 Session...', ai)
+          projectService.addLog(projectId, nextEntry)
+          broadcast({ type: 'log', projectId, entry: nextEntry })
+          setTimeout(() => {
+            const currentProj = projectService.getProject(projectId)
+            if (currentProj && currentProj.status === 'running') startSession(projectId, 'coding', 0)
+          }, 3000)
+        }
+      } else if (progress.total > 0 && progress.passed >= progress.total) {
+        projectService.updateProject(projectId, { status: 'completed' })
+        broadcast({ type: 'status', projectId, status: 'completed' })
+        stopFeatureWatcher(projectId)
+      } else if (wasStopped) {
+        const agents2 = runningAgents.get(projectId)
+        if (!agents2 || agents2.size === 0) {
+          projectService.updateProject(projectId, { status: 'paused' })
+          broadcast({ type: 'status', projectId, status: 'paused' })
+          stopFeatureWatcher(projectId)
+        }
+      }
+    },
   })
 }
 
@@ -775,193 +827,82 @@ function startParallelSession(projectId: string, agentIndex: number) {
   }
 
   const branch = `agent-${agentIndex}/feature-${feature.id}`
-  const sessionId = uuidv4()
   log.agent(`Agent ${agentIndex}: 认领 Feature ${feature.id} — ${feature.description}`)
   log.git(`Agent ${agentIndex}: 创建分支 ${branch}`)
-  const session: SessionData = {
-    id: sessionId,
-    projectId,
-    type: 'coding',
-    status: 'running',
-    agentIndex,
-    branch,
-    featureId: feature.id,
-    startedAt: new Date().toISOString(),
-  }
-  projectService.addSession(projectId, session)
-  broadcast({ type: 'session_update', projectId, session })
-
-  const sysEntry = createLogEntry(sessionId, 'system',
-    `🚀 Agent ${agentIndex} 启动并行编码 Session — Feature: ${feature.description} — Branch: ${branch}`, agentIndex)
-  projectService.addLog(projectId, sysEntry)
-  broadcast({ type: 'log', projectId, entry: sysEntry })
 
   withGitLock(projectId, async () => {
     const ok = await createWorkBranch(project.projectDir, branch)
     if (!ok) {
-      const errEntry = createLogEntry(sessionId, 'error', `创建分支 ${branch} 失败`, agentIndex)
+      const errEntry = createLogEntry('', 'error', `创建分支 ${branch} 失败`, agentIndex)
       projectService.addLog(projectId, errEntry)
       broadcast({ type: 'log', projectId, entry: errEntry })
       releaseFeature(projectId, feature.id)
       return
     }
 
-    const prompt = buildParallelCodingPrompt(agentIndex, branch, feature)
+    spawnClaudeSession({
+      projectId, project,
+      sessionType: 'coding',
+      agentIndex,
+      prompt: buildParallelCodingPrompt(agentIndex, branch, feature),
+      maxTurns: 200,
+      startMessage: `🚀 Agent ${agentIndex} 启动并行编码 Session — Feature: ${feature.description} — Branch: ${branch}`,
+      branch,
+      featureId: feature.id,
+      onClose({ code, wasStopped, endStatus, sessionId }) {
+        releaseFeature(projectId, feature.id)
 
-    // 创建日志文件
-    const logFile = createLogFile(sessionId)
-    log.agent(`Agent ${agentIndex} claude 日志文件: ${logFile.filePath}`)
+        if (!wasStopped && code === 0) {
+          withGitLock(projectId, async () => {
+            const mergeEntry = createLogEntry(sessionId, 'system',
+              `🔀 Agent ${agentIndex}: 合并分支 ${branch} 到 main...`, agentIndex)
+            projectService.addLog(projectId, mergeEntry)
+            broadcast({ type: 'log', projectId, entry: mergeEntry })
 
-    const proc = spawn('claude', buildClaudeArgs(prompt, project, 200), {
-      cwd: project.projectDir,
-      env: { ...process.env },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+            const result = await mergeBranch(project.projectDir, branch)
+            if (result.success) {
+              const successEntry = createLogEntry(sessionId, 'system',
+                `✅ Agent ${agentIndex}: 分支 ${branch} 合并成功`, agentIndex)
+              projectService.addLog(projectId, successEntry)
+              broadcast({ type: 'log', projectId, entry: successEntry })
+            } else {
+              const failEntry = createLogEntry(sessionId, 'error',
+                `⚠️ Agent ${agentIndex}: 合并失败 — ${result.error}（需要人工处理）`, agentIndex)
+              projectService.addLog(projectId, failEntry)
+              broadcast({ type: 'log', projectId, entry: failEntry })
+            }
 
-    log.agent(`Agent ${agentIndex} claude 进程已启动 (pid=${proc.pid})`)
+            projectService.syncFeaturesFromDisk(projectId)
+            const progress = projectService.getProgress(projectId)
+            broadcast({ type: 'progress', projectId, progress })
 
-    // 持久化 PID 和日志文件路径到 session
-    projectService.updateSession(projectId, sessionId, {
-      pid: proc.pid,
-      logFile: logFile.filePath,
-    })
+            if (progress.total > 0 && progress.passed >= progress.total) {
+              projectService.updateProject(projectId, { status: 'completed' })
+              broadcast({ type: 'status', projectId, status: 'completed' })
+              stopFeatureWatcher(projectId)
+              return
+            }
 
-    if (!runningAgents.has(projectId)) {
-      runningAgents.set(projectId, new Map())
-    }
-    const agentInstance: AgentInstance = {
-      process: proc, sessionId, stopped: false, agentIndex,
-      featureId: feature.id, branch,
-    }
-    runningAgents.get(projectId)!.set(agentIndex, agentInstance)
-    broadcastAgentCount(projectId)
-
-    let buffer = ''
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      const raw = chunk.toString()
-      logFile.stream.write(raw)
-      buffer += raw
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      for (const line of lines) {
-        if (line.trim()) {
-          parseStreamEvent(line, sessionId, projectId, agentIndex)
-        }
-      }
-    })
-
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString().trim()
-      if (text) {
-        logFile.stream.write(`[STDERR] ${text}\n`)
-        const entry = createLogEntry(sessionId, 'error', text.slice(0, 500), agentIndex)
-        projectService.addLog(projectId, entry)
-        broadcast({ type: 'log', projectId, entry })
-      }
-    })
-
-    proc.on('close', (code) => {
-      logFile.stream.write(`\n=== Session ended at ${new Date().toISOString()} (exit code: ${code}) ===\n`)
-      logFile.stream.end()
-      recentMessages.delete(sessionId)
-
-      const agents = runningAgents.get(projectId)
-      const agent = agents?.get(agentIndex)
-      const wasStopped = agent?.stopped || false
-      agents?.delete(agentIndex)
-      if (agents && agents.size === 0) {
-        runningAgents.delete(projectId)
-      }
-      broadcastAgentCount(projectId)
-
-      const endStatus = wasStopped ? 'stopped' : (code === 0 ? 'completed' : 'failed')
-      projectService.updateSession(projectId, sessionId, {
-        status: endStatus,
-        endedAt: new Date().toISOString(),
-      })
-
-      const updatedSession = { ...session, status: endStatus as SessionData['status'], endedAt: new Date().toISOString() }
-      broadcast({ type: 'session_update', projectId, session: updatedSession })
-
-      const endEntry = createLogEntry(sessionId, 'system',
-        `Agent ${agentIndex} Session 结束 (${endStatus}, exit code: ${code})`, agentIndex)
-      projectService.addLog(projectId, endEntry)
-      broadcast({ type: 'log', projectId, entry: endEntry })
-
-      releaseFeature(projectId, feature.id)
-
-      if (!wasStopped && code === 0) {
-        withGitLock(projectId, async () => {
-          const mergeEntry = createLogEntry(sessionId, 'system',
-            `🔀 Agent ${agentIndex}: 合并分支 ${branch} 到 main...`, agentIndex)
-          projectService.addLog(projectId, mergeEntry)
-          broadcast({ type: 'log', projectId, entry: mergeEntry })
-
-          const result = await mergeBranch(project.projectDir, branch)
-          if (result.success) {
-            const successEntry = createLogEntry(sessionId, 'system',
-              `✅ Agent ${agentIndex}: 分支 ${branch} 合并成功`, agentIndex)
-            projectService.addLog(projectId, successEntry)
-            broadcast({ type: 'log', projectId, entry: successEntry })
-          } else {
-            const failEntry = createLogEntry(sessionId, 'error',
-              `⚠️ Agent ${agentIndex}: 合并失败 — ${result.error}（需要人工处理）`, agentIndex)
-            projectService.addLog(projectId, failEntry)
-            broadcast({ type: 'log', projectId, entry: failEntry })
-          }
-
-          projectService.syncFeaturesFromDisk(projectId)
-          const progress = projectService.getProgress(projectId)
-          broadcast({ type: 'progress', projectId, progress })
-
-          if (progress.total > 0 && progress.passed >= progress.total) {
-            projectService.updateProject(projectId, { status: 'completed' })
-            broadcast({ type: 'status', projectId, status: 'completed' })
+            const proj = projectService.getProject(projectId)
+            if (proj && proj.status === 'running') {
+              setTimeout(() => startParallelSession(projectId, agentIndex), 3000)
+            }
+          }).catch(() => { /* git lock error */ })
+        } else if (wasStopped) {
+          const agents2 = runningAgents.get(projectId)
+          if (!agents2 || agents2.size === 0) {
+            projectService.updateProject(projectId, { status: 'paused' })
+            broadcast({ type: 'status', projectId, status: 'paused' })
             stopFeatureWatcher(projectId)
-            return
           }
-
+        } else {
+          // 非正常退出，延迟重试
           const proj = projectService.getProject(projectId)
           if (proj && proj.status === 'running') {
-            setTimeout(() => {
-              startParallelSession(projectId, agentIndex)
-            }, 3000)
+            setTimeout(() => startParallelSession(projectId, agentIndex), 5000)
           }
-        }).catch(() => {
-          // git lock error
-        })
-      } else if (wasStopped) {
-        const agents2 = runningAgents.get(projectId)
-        if (!agents2 || agents2.size === 0) {
-          projectService.updateProject(projectId, { status: 'paused' })
-          broadcast({ type: 'status', projectId, status: 'paused' })
-          stopFeatureWatcher(projectId)
         }
-      } else {
-        const proj = projectService.getProject(projectId)
-        if (proj && proj.status === 'running') {
-          setTimeout(() => {
-            startParallelSession(projectId, agentIndex)
-          }, 5000)
-        }
-      }
-    })
-
-    proc.on('error', (err) => {
-      logFile.stream.end()
-      const entry = createLogEntry(sessionId, 'error', `进程错误: ${err.message}`, agentIndex)
-      projectService.addLog(projectId, entry)
-      broadcast({ type: 'log', projectId, entry })
-
-      releaseFeature(projectId, feature.id)
-      const agents = runningAgents.get(projectId)
-      agents?.delete(agentIndex)
-      if (agents && agents.size === 0) {
-        runningAgents.delete(projectId)
-        projectService.updateProject(projectId, { status: 'error' })
-        broadcast({ type: 'status', projectId, status: 'error' })
-      }
-      broadcastAgentCount(projectId)
+      },
     })
   }).catch(() => {
     releaseFeature(projectId, feature.id)
@@ -973,153 +914,34 @@ function startAgentTeamsSession(projectId: string) {
   const project = projectService.getProject(projectId)
   if (!project) return
 
-  const sessionId = uuidv4()
-  log.agent(`启动 Agent Teams session (project=${projectId}, session=${sessionId.slice(0, 8)})`)
-  const session: SessionData = {
-    id: sessionId,
-    projectId,
-    type: 'agent-teams',
-    status: 'running',
+  spawnClaudeSession({
+    projectId, project,
+    sessionType: 'agent-teams',
     agentIndex: 0,
-    startedAt: new Date().toISOString(),
-  }
-  projectService.addSession(projectId, session)
-  broadcast({ type: 'session_update', projectId, session })
+    prompt: buildAgentTeamsPrompt(project),
+    maxTurns: 500,
+    startMessage: '🚀 启动 Agent Teams 模式 — Claude 将自主协调多个子 Agent 完成全流程开发',
+    heartbeat: true,
+    heartbeatMessage: 'Agent Teams 正在初始化，请稍候...',
+    onClose({ wasStopped }) {
+      projectService.syncFeaturesFromDisk(projectId)
+      const progress = projectService.getProgress(projectId)
+      broadcast({ type: 'progress', projectId, progress })
 
-  const prompt = buildAgentTeamsPrompt(project)
-
-  const sysEntry = createLogEntry(sessionId, 'system', '🚀 启动 Agent Teams 模式 — Claude 将自主协调多个子 Agent 完成全流程开发', 0)
-  projectService.addLog(projectId, sysEntry)
-  broadcast({ type: 'log', projectId, entry: sysEntry })
-
-  const logFile = createLogFile(sessionId)
-  log.agent(`Agent Teams claude 日志文件: ${logFile.filePath}`)
-
-  const proc = spawn('claude', buildClaudeArgs(prompt, project, 500), {
-    cwd: project.projectDir,
-    env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-
-  log.agent(`Agent Teams claude 进程已启动 (pid=${proc.pid}, cwd=${project.projectDir}, model=${project.model})`)
-
-  projectService.updateSession(projectId, sessionId, {
-    pid: proc.pid,
-    logFile: logFile.filePath,
-  })
-
-  if (!runningAgents.has(projectId)) {
-    runningAgents.set(projectId, new Map())
-  }
-  const agentInstance: AgentInstance = { process: proc, sessionId, stopped: false, agentIndex: 0 }
-  runningAgents.get(projectId)!.set(0, agentInstance)
-  broadcastAgentCount(projectId)
-
-  // Heartbeat
-  let gotOutput = false
-  const heartbeat = setTimeout(() => {
-    if (!gotOutput) {
-      const waitEntry = createLogEntry(sessionId, 'system', 'Agent Teams 正在初始化，请稍候...', 0)
-      projectService.addLog(projectId, waitEntry)
-      broadcast({ type: 'log', projectId, entry: waitEntry })
-    }
-  }, 15000)
-
-  let buffer = ''
-  proc.stdout?.on('data', (chunk: Buffer) => {
-    if (!gotOutput) {
-      gotOutput = true
-      clearTimeout(heartbeat)
-    }
-    const raw = chunk.toString()
-    logFile.stream.write(raw)
-    buffer += raw
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (line.trim()) {
-        parseStreamEvent(line, sessionId, projectId, 0)
+      if (progress.total > 0 && progress.passed >= progress.total) {
+        projectService.updateProject(projectId, { status: 'completed' })
+        broadcast({ type: 'status', projectId, status: 'completed' })
+        stopFeatureWatcher(projectId)
+      } else if (wasStopped) {
+        projectService.updateProject(projectId, { status: 'paused' })
+        broadcast({ type: 'status', projectId, status: 'paused' })
+        stopFeatureWatcher(projectId)
+      } else {
+        projectService.updateProject(projectId, { status: 'error' })
+        broadcast({ type: 'status', projectId, status: 'error' })
+        stopFeatureWatcher(projectId)
       }
-    }
-  })
-
-  proc.stderr?.on('data', (chunk: Buffer) => {
-    const text = chunk.toString().trim()
-    if (text) {
-      logFile.stream.write(`[STDERR] ${text}\n`)
-      if (!gotOutput) {
-        gotOutput = true
-        clearTimeout(heartbeat)
-      }
-      const entry = createLogEntry(sessionId, 'error', text.slice(0, 500), 0)
-      projectService.addLog(projectId, entry)
-      broadcast({ type: 'log', projectId, entry })
-    }
-  })
-
-  proc.on('close', (code) => {
-    clearTimeout(heartbeat)
-    logFile.stream.write(`\n=== Agent Teams session ended at ${new Date().toISOString()} (exit code: ${code}) ===\n`)
-    logFile.stream.end()
-    recentMessages.delete(sessionId)
-
-    const agents = runningAgents.get(projectId)
-    const agent = agents?.get(0)
-    const wasStopped = agent?.stopped || false
-    agents?.delete(0)
-    if (agents && agents.size === 0) {
-      runningAgents.delete(projectId)
-    }
-    broadcastAgentCount(projectId)
-
-    const endStatus = wasStopped ? 'stopped' : (code === 0 ? 'completed' : 'failed')
-    log.agent(`Agent Teams session 结束 (status=${endStatus}, exit=${code})`)
-    projectService.updateSession(projectId, sessionId, {
-      status: endStatus,
-      endedAt: new Date().toISOString(),
-    })
-
-    const updatedSession = { ...session, status: endStatus as SessionData['status'], endedAt: new Date().toISOString() }
-    broadcast({ type: 'session_update', projectId, session: updatedSession })
-
-    projectService.syncFeaturesFromDisk(projectId)
-    const progress = projectService.getProgress(projectId)
-    broadcast({ type: 'progress', projectId, progress })
-
-    const endEntry = createLogEntry(sessionId, 'system',
-      `Agent Teams Session 结束 (${endStatus}, exit code: ${code})`, 0)
-    projectService.addLog(projectId, endEntry)
-    broadcast({ type: 'log', projectId, entry: endEntry })
-
-    // Agent Teams 模式不做链式启动，根据进度设置最终状态
-    if (progress.total > 0 && progress.passed >= progress.total) {
-      projectService.updateProject(projectId, { status: 'completed' })
-      broadcast({ type: 'status', projectId, status: 'completed' })
-      stopFeatureWatcher(projectId)
-    } else if (wasStopped) {
-      projectService.updateProject(projectId, { status: 'paused' })
-      broadcast({ type: 'status', projectId, status: 'paused' })
-      stopFeatureWatcher(projectId)
-    } else {
-      // 非正常结束但还有未完成的 feature
-      projectService.updateProject(projectId, { status: 'error' })
-      broadcast({ type: 'status', projectId, status: 'error' })
-      stopFeatureWatcher(projectId)
-    }
-  })
-
-  proc.on('error', (err) => {
-    clearTimeout(heartbeat)
-    logFile.stream.end()
-    const entry = createLogEntry(sessionId, 'error', `进程错误: ${err.message}`, 0)
-    projectService.addLog(projectId, entry)
-    broadcast({ type: 'log', projectId, entry })
-
-    runningAgents.get(projectId)?.delete(0)
-    runningAgents.delete(projectId)
-    projectService.updateProject(projectId, { status: 'error' })
-    broadcast({ type: 'status', projectId, status: 'error' })
-    broadcastAgentCount(projectId)
+    },
   })
 }
 
@@ -1310,107 +1132,23 @@ export function startAppendInitializer(projectId: string, appendSpec: string) {
   const specPath = path.join(project.projectDir, 'app_spec.txt')
   const separator = '\n\n---\n\n# 追加需求\n\n'
   fs.appendFileSync(specPath, separator + appendSpec)
-
-  // 更新项目 spec 字段
   projectService.updateProject(projectId, { spec: project.spec + separator + appendSpec })
-
-  // 用独立的 agentIndex（99）避免与正在运行的 coding session 冲突
-  const agentIndex = 99
-  const sessionId = uuidv4()
-  const session: SessionData = {
-    id: sessionId,
-    projectId,
-    type: 'initializer',
-    status: 'running',
-    agentIndex,
-    startedAt: new Date().toISOString(),
-  }
-  projectService.addSession(projectId, session)
-  broadcast({ type: 'session_update', projectId, session })
-
-  const prompt = buildAppendInitializerPrompt(project, appendSpec)
-
-  const sysEntry = createLogEntry(sessionId, 'system', '📝 启动增量需求拆解...', agentIndex)
-  projectService.addLog(projectId, sysEntry)
-  broadcast({ type: 'log', projectId, entry: sysEntry })
 
   startFeatureWatcher(projectId)
 
-  const logFile = createLogFile(sessionId)
-
-  const proc = spawn('claude', buildClaudeArgs(prompt, project, 100), {
-    cwd: project.projectDir,
-    env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-
-  projectService.updateSession(projectId, sessionId, {
-    pid: proc.pid,
-    logFile: logFile.filePath,
-  })
-
-  // 不占用主 agent slot，用临时 map 跟踪
-  if (!runningAgents.has(projectId)) {
-    runningAgents.set(projectId, new Map())
-  }
-  const agentInstance: AgentInstance = { process: proc, sessionId, stopped: false, agentIndex }
-  runningAgents.get(projectId)!.set(agentIndex, agentInstance)
-
-  let buffer = ''
-  proc.stdout?.on('data', (chunk: Buffer) => {
-    const raw = chunk.toString()
-    logFile.stream.write(raw)
-    buffer += raw
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (line.trim()) parseStreamEvent(line, sessionId, projectId, agentIndex)
-    }
-  })
-
-  proc.stderr?.on('data', (chunk: Buffer) => {
-    const text = chunk.toString().trim()
-    if (text) {
-      logFile.stream.write(`[STDERR] ${text}\n`)
-      const entry = createLogEntry(sessionId, 'error', text.slice(0, 500), agentIndex)
-      projectService.addLog(projectId, entry)
-      broadcast({ type: 'log', projectId, entry })
-    }
-  })
-
-  proc.on('close', (code) => {
-    logFile.stream.write(`\n=== Append initializer ended (exit code: ${code}) ===\n`)
-    logFile.stream.end()
-    recentMessages.delete(sessionId)
-
-    const agents = runningAgents.get(projectId)
-    agents?.delete(agentIndex)
-    if (agents && agents.size === 0) runningAgents.delete(projectId)
-
-    const endStatus = code === 0 ? 'completed' : 'failed'
-    projectService.updateSession(projectId, sessionId, { status: endStatus, endedAt: new Date().toISOString() })
-    broadcast({ type: 'session_update', projectId, session: { ...session, status: endStatus, endedAt: new Date().toISOString() } })
-
-    projectService.syncFeaturesFromDisk(projectId)
-    const progress = projectService.getProgress(projectId)
-    broadcast({ type: 'progress', projectId, progress })
-
-    const endEntry = createLogEntry(sessionId, 'system', `增量需求拆解完成 (${endStatus})`, agentIndex)
-    projectService.addLog(projectId, endEntry)
-    broadcast({ type: 'log', projectId, entry: endEntry })
-
-    log.agent(`增量 initializer 结束 (status=${endStatus}, features=${progress.total})`)
-  })
-
-  proc.on('error', (err) => {
-    logFile.stream.end()
-    const entry = createLogEntry(sessionId, 'error', `进程错误: ${err.message}`, agentIndex)
-    projectService.addLog(projectId, entry)
-    broadcast({ type: 'log', projectId, entry })
-
-    const agents = runningAgents.get(projectId)
-    agents?.delete(agentIndex)
-    if (agents && agents.size === 0) runningAgents.delete(projectId)
+  spawnClaudeSession({
+    projectId, project,
+    sessionType: 'initializer',
+    agentIndex: 99,
+    prompt: buildAppendInitializerPrompt(project, appendSpec),
+    maxTurns: 100,
+    startMessage: '📝 启动增量需求拆解...',
+    onClose({ endStatus }) {
+      projectService.syncFeaturesFromDisk(projectId)
+      const progress = projectService.getProgress(projectId)
+      broadcast({ type: 'progress', projectId, progress })
+      log.agent(`增量 initializer 结束 (status=${endStatus}, features=${progress.total})`)
+    },
   })
 }
 
@@ -1436,100 +1174,20 @@ export function startReviewSession(projectId: string, featureIds: string[], inst
 
   log.agent(`启动审查修改 session (project=${projectId}, features=${selected.length})`)
 
-  const agentIndex = 98
-  const sessionId = uuidv4()
-  const session: SessionData = {
-    id: sessionId,
-    projectId,
-    type: 'initializer',
-    status: 'running',
-    agentIndex,
-    startedAt: new Date().toISOString(),
-  }
-  projectService.addSession(projectId, session)
-  broadcast({ type: 'session_update', projectId, session })
-
-  const prompt = buildReviewPrompt(selected, instruction)
-
-  const sysEntry = createLogEntry(sessionId, 'system', `🔍 启动 Feature 审查修改 (${selected.length} 个 Feature)...`, agentIndex)
-  projectService.addLog(projectId, sysEntry)
-  broadcast({ type: 'log', projectId, entry: sysEntry })
-
-  const logFile = createLogFile(sessionId)
-
-  const proc = spawn('claude', buildClaudeArgs(prompt, project, 100), {
-    cwd: project.projectDir,
-    env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-
-  projectService.updateSession(projectId, sessionId, {
-    pid: proc.pid,
-    logFile: logFile.filePath,
-  })
-
-  if (!runningAgents.has(projectId)) {
-    runningAgents.set(projectId, new Map())
-  }
-  const agentInstance: AgentInstance = { process: proc, sessionId, stopped: false, agentIndex }
-  runningAgents.get(projectId)!.set(agentIndex, agentInstance)
-
-  let buffer = ''
-  proc.stdout?.on('data', (chunk: Buffer) => {
-    const raw = chunk.toString()
-    logFile.stream.write(raw)
-    buffer += raw
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (line.trim()) parseStreamEvent(line, sessionId, projectId, agentIndex)
-    }
-  })
-
-  proc.stderr?.on('data', (chunk: Buffer) => {
-    const text = chunk.toString().trim()
-    if (text) {
-      logFile.stream.write(`[STDERR] ${text}\n`)
-      const entry = createLogEntry(sessionId, 'error', text.slice(0, 500), agentIndex)
-      projectService.addLog(projectId, entry)
-      broadcast({ type: 'log', projectId, entry })
-    }
-  })
-
-  proc.on('close', (code) => {
-    logFile.stream.write(`\n=== Review session ended (exit code: ${code}) ===\n`)
-    logFile.stream.end()
-    recentMessages.delete(sessionId)
-
-    const agents = runningAgents.get(projectId)
-    agents?.delete(agentIndex)
-    if (agents && agents.size === 0) runningAgents.delete(projectId)
-
-    const endStatus = code === 0 ? 'completed' : 'failed'
-    projectService.updateSession(projectId, sessionId, { status: endStatus, endedAt: new Date().toISOString() })
-    broadcast({ type: 'session_update', projectId, session: { ...session, status: endStatus, endedAt: new Date().toISOString() } })
-
-    projectService.syncFeaturesFromDisk(projectId)
-    const progress = projectService.getProgress(projectId)
-    broadcast({ type: 'progress', projectId, progress })
-    broadcast({ type: 'features_sync', projectId, features: projectService.getFeatures(projectId) })
-
-    const endEntry = createLogEntry(sessionId, 'system', `Feature 审查修改完成 (${endStatus})`, agentIndex)
-    projectService.addLog(projectId, endEntry)
-    broadcast({ type: 'log', projectId, entry: endEntry })
-
-    log.agent(`审查修改 session 结束 (status=${endStatus}, features=${progress.total})`)
-  })
-
-  proc.on('error', (err) => {
-    logFile.stream.end()
-    const entry = createLogEntry(sessionId, 'error', `进程错误: ${err.message}`, agentIndex)
-    projectService.addLog(projectId, entry)
-    broadcast({ type: 'log', projectId, entry })
-
-    const agents = runningAgents.get(projectId)
-    agents?.delete(agentIndex)
-    if (agents && agents.size === 0) runningAgents.delete(projectId)
+  spawnClaudeSession({
+    projectId, project,
+    sessionType: 'initializer',
+    agentIndex: 98,
+    prompt: buildReviewPrompt(selected, instruction),
+    maxTurns: 100,
+    startMessage: `🔍 启动 Feature 审查修改 (${selected.length} 个 Feature)...`,
+    onClose({ endStatus }) {
+      projectService.syncFeaturesFromDisk(projectId)
+      const progress = projectService.getProgress(projectId)
+      broadcast({ type: 'progress', projectId, progress })
+      broadcast({ type: 'features_sync', projectId, features: projectService.getFeatures(projectId) })
+      log.agent(`审查修改 session 结束 (status=${endStatus}, features=${progress.total})`)
+    },
   })
 }
 
