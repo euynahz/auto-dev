@@ -60,7 +60,40 @@ export function checkDir(dirPath: string): { exists: boolean; hasContent: boolea
 }
 
 // 创建项目
-export function createProject(name: string, spec: string, model = 'claude-opus-4-6', concurrency = 1, useAgentTeams = false, systemPrompt?: string, reviewBeforeCoding?: boolean, projectDir?: string, forceClean?: boolean, provider = 'claude', providerSettings?: Record<string, unknown>): ProjectData {
+// ===== 项目创建/导入选项 =====
+export interface CreateProjectOptions {
+  name: string
+  spec: string
+  model?: string
+  concurrency?: number
+  useAgentTeams?: boolean
+  systemPrompt?: string
+  reviewBeforeCoding?: boolean
+  projectDir?: string
+  forceClean?: boolean
+  provider?: string
+  providerSettings?: Record<string, unknown>
+}
+
+export interface ImportProjectOptions {
+  name: string
+  dirPath: string
+  model?: string
+  concurrency?: number
+  useAgentTeams?: boolean
+  systemPrompt?: string
+  reviewBeforeCoding?: boolean
+  taskPrompt?: string
+  provider?: string
+  providerSettings?: Record<string, unknown>
+}
+
+export function createProject(opts: CreateProjectOptions): ProjectData {
+  const {
+    name, spec, model = 'claude-opus-4-6', concurrency = 1,
+    useAgentTeams = false, systemPrompt, reviewBeforeCoding,
+    projectDir, forceClean, provider = 'claude', providerSettings,
+  } = opts
   const id = uuidv4()
   const now = new Date().toISOString()
 
@@ -111,7 +144,12 @@ export function createProject(name: string, spec: string, model = 'claude-opus-4
 }
 
 // 导入已有项目
-export function importProject(name: string, dirPath: string, model = 'claude-opus-4-6', concurrency = 1, useAgentTeams = false, systemPrompt?: string, reviewBeforeCoding?: boolean, taskPrompt?: string, provider = 'claude', providerSettings?: Record<string, unknown>): ProjectData {
+export function importProject(opts: ImportProjectOptions): ProjectData {
+  const {
+    name, dirPath, model = 'claude-opus-4-6', concurrency = 1,
+    useAgentTeams = false, systemPrompt, reviewBeforeCoding,
+    taskPrompt, provider = 'claude', providerSettings,
+  } = opts
   if (!isPathSafe(dirPath)) throw new Error('路径不在允许范围内')
   // 验证目录存在
   if (!fs.existsSync(dirPath)) {

@@ -79,7 +79,10 @@ router.post('/projects', (req, res) => {
   }
 
   log.api(`POST /projects — 创建项目: ${name} (path=${dirPath || '(auto)'}, provider=${provider || 'claude'}, model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
-  const project = projectService.createProject(name, spec, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, dirPath, forceClean, provider, providerSettings)
+  const project = projectService.createProject({
+    name, spec, model, concurrency, useAgentTeams, systemPrompt,
+    reviewBeforeCoding, projectDir: dirPath, forceClean, provider, providerSettings,
+  })
   res.json({
     ...project,
     features: [],
@@ -97,7 +100,10 @@ router.post('/projects/import', (req, res) => {
 
   log.api(`POST /projects/import — 导入项目: ${name} (path=${dirPath}, agentTeams=${!!useAgentTeams})`)
   try {
-    const project = projectService.importProject(name, dirPath, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, taskPrompt, provider, providerSettings)
+    const project = projectService.importProject({
+      name, dirPath, model, concurrency, useAgentTeams, systemPrompt,
+      reviewBeforeCoding, taskPrompt, provider, providerSettings,
+    })
     res.json({
       ...project,
       features: [],

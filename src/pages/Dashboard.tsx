@@ -140,7 +140,7 @@ export default function Dashboard() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
-          {projects.map((project) => {
+          {[...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).map((project) => {
             const config = statusConfig[project.status]
             const isRunning = project.status === 'running'
             return (
@@ -189,7 +189,10 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
-                      <span className="font-mono">{project.model}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-secondary text-[10px] font-medium uppercase">{project.provider || 'claude'}</span>
+                        <span className="font-mono">{project.model}</span>
+                      </span>
                       <span>{new Date(project.createdAt).toLocaleDateString('zh-CN')}</span>
                     </div>
                   </CardContent>

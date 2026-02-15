@@ -350,6 +350,14 @@ function handleProviderEvent(
       }
       break
 
+    case 'tool_result':
+      {
+        const entry = createLogEntry(sessionId, 'tool_result', event.output || '', agentIndex)
+        projectService.addLog(projectId, entry)
+        broadcast({ type: 'log', projectId, entry })
+      }
+      break
+
     case 'system':
       {
         const entry = createLogEntry(sessionId, 'system', event.content, agentIndex)
@@ -695,7 +703,8 @@ function spawnAgentSession(config: SpawnSessionConfig): void {
         gotOutput = true
         if (heartbeatTimer) clearTimeout(heartbeatTimer)
       }
-      const entry = createLogEntry(sessionId, 'error', text.slice(0, 500), agentIndex)
+      // stderr 不一定是错误（很多 CLI 往 stderr 写进度），降级为 system
+      const entry = createLogEntry(sessionId, 'system', text.slice(0, 500), agentIndex)
       projectService.addLog(projectId, entry)
       broadcast({ type: 'log', projectId, entry })
     }

@@ -19,7 +19,11 @@ export function useWebSocket() {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`)
+    let wsUrl = `${protocol}//${window.location.host}/ws`
+    // 传递 token 认证（从 URL 参数或 localStorage 获取）
+    const token = new URLSearchParams(window.location.search).get('token')
+    if (token) wsUrl += `?token=${encodeURIComponent(token)}`
+    const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
       console.log('[WS] 已连接')
