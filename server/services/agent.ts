@@ -226,6 +226,15 @@ function buildCodingPrompt(project?: ReturnType<typeof projectService.getProject
   return injectVerifyCommand(template, project?.verifyCommand)
 }
 
+// Build merge conflict resolution prompt
+function buildMergeResolvePrompt(branch: string, featureDescription: string, conflictOutput: string): string {
+  let template = loadPrompt('merge-resolve')
+  template = template.replace(/\{\{BRANCH_NAME\}\}/g, branch)
+  template = template.replace(/\{\{FEATURE_DESCRIPTION\}\}/g, featureDescription)
+  template = template.replace(/\{\{CONFLICT_OUTPUT\}\}/g, conflictOutput)
+  return template
+}
+
 // Build agent-teams prompt
 function buildAgentTeamsPrompt(project: ReturnType<typeof projectService.getProject>): string {
   if (!project) return ''
@@ -433,7 +442,7 @@ async function createWorkBranch(projectDir: string, branch: string): Promise<boo
 }
 
 // Merge branch back to main
-async function mergeBranch(projectDir: string, branch: string): Promise<{ success: boolean; error?: string }> {
+async function mergeBranch(projectDir: string, branch: string): Promise<{ success: boolean; error?: string; conflictOutput?: string }> {
   log.git(`Merging branch ${branch} -> main`)
   const checkoutResult = await execGit(projectDir, ['checkout', 'main'])
   if (checkoutResult.code !== 0) {
@@ -444,8 +453,9 @@ async function mergeBranch(projectDir: string, branch: string): Promise<{ succes
   const mergeResult = await execGit(projectDir, ['merge', '--no-ff', branch, '-m', `Merge ${branch}`])
   if (mergeResult.code !== 0) {
     log.error(`Merge conflict: ${mergeResult.stderr}`)
+    const conflictOutput = mergeResult.stderr + '\n' + mergeResult.stdout
     await execGit(projectDir, ['merge', '--abort'])
-    return { success: false, error: `Merge conflict: ${mergeResult.stderr}` }
+    return { success: false, error: `Merge conflict: ${mergeResult.stderr}`, conflictOutput }
   }
 
   await execGit(projectDir, ['branch', '-d', branch])
@@ -938,9 +948,57 @@ function startParallelSession(projectId: string, agentIndex: number) {
                 `✅ Agent ${agentIndex}: Branch ${branch} merged successfully`, agentIndex)
               projectService.addLog(projectId, successEntry)
               broadcast({ type: 'log', projectId, entry: successEntry })
+            } else if (result.conflictOutput) {
+              // Merge conflict — spawn an AI agent to resolve it
+              const conflictEntry = createLogEntry(sessionId, 'system',
+                `⚠️ Agent ${agentIndex}: Merge conflict on ${branch}, spawning conflict resolution agent...`, agentIndex)
+              projectService.addLog(projectId, conflictEntry)
+              broadcast({ type: 'log', projectId, entry: conflictEntry })
+
+              spawnAgentSession({
+                projectId, project,
+                sessionType: 'coding',
+                agentIndex,
+                prompt: buildMergeResolvePrompt(branch, feature.description, result.conflictOutput),
+                maxTurns: 50,
+                startMessage: `🔧 Resolving merge conflict for ${branch}...`,
+                onClose({ wasStopped: ws2, endStatus: es2, sessionId: sid2 }) {
+                  // Check if merge was resolved (branch should be gone if successful)
+                  withGitLock(projectId, async () => {
+                    const branchCheck = await execGit(project.projectDir, ['branch', '--list', branch])
+                    const branchStillExists = branchCheck.stdout.trim().length > 0
+
+                    if (!ws2 && es2 === 'completed' && !branchStillExists) {
+                      const resolvedEntry = createLogEntry(sid2, 'system',
+                        `✅ Merge conflict on ${branch} resolved by AI agent`, agentIndex)
+                      projectService.addLog(projectId, resolvedEntry)
+                      broadcast({ type: 'log', projectId, entry: resolvedEntry })
+                    } else {
+                      const failEntry = createLogEntry(sid2, 'error',
+                        `❌ AI agent could not resolve merge conflict on ${branch} — manual intervention required`, agentIndex)
+                      projectService.addLog(projectId, failEntry)
+                      broadcast({ type: 'log', projectId, entry: failEntry })
+                    }
+
+                    projectService.syncFeaturesFromDisk(projectId)
+                    const p2 = projectService.getProgress(projectId)
+                    broadcast({ type: 'progress', projectId, progress: p2 })
+
+                    if (p2.total > 0 && p2.passed >= p2.total) {
+                      applyTransition(projectId, transition('running', { type: 'SESSION_COMPLETE', allDone: true }))
+                      return
+                    }
+                    const proj = projectService.getProject(projectId)
+                    if (proj && proj.status === 'running') {
+                      setTimeout(() => startParallelSession(projectId, agentIndex), SESSION_CHAIN_DELAY_MS)
+                    }
+                  }).catch(() => { /* git lock error */ })
+                },
+              })
+              return // Don't continue the normal post-merge flow
             } else {
               const failEntry = createLogEntry(sessionId, 'error',
-                `⚠️ Agent ${agentIndex}: Merge failed — ${result.error} (requires manual intervention)`, agentIndex)
+                `⚠️ Agent ${agentIndex}: Merge failed — ${result.error}`, agentIndex)
               projectService.addLog(projectId, failEntry)
               broadcast({ type: 'log', projectId, entry: failEntry })
             }
