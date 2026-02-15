@@ -1,5 +1,6 @@
 import express from 'express'
 import path from 'path'
+import url from 'url'
 import { createServer } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
 import apiRouter from './routes/api.js'
@@ -15,7 +16,20 @@ const wss = new WebSocketServer({ server, path: '/ws' })
 
 const clients = new Set<WebSocket>()
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // WebSocket Token 认证
+  const token = process.env.AUTODEV_TOKEN
+  if (token) {
+    const parsed = url.parse(req.url || '', true)
+    if (parsed.query.token !== token) {
+      ws.close(1008, 'Unauthorized')
+      return
+    }
+  }
+
+  ;(ws as any).isAlive = true
+  ws.on('pong', () => { (ws as any).isAlive = true })
+
   clients.add(ws)
   log.ws(`客户端连接，当前 ${clients.size} 个`)
 
@@ -23,6 +37,24 @@ wss.on('connection', (ws) => {
     clients.delete(ws)
     log.ws(`客户端断开，当前 ${clients.size} 个`)
   })
+})
+
+// 心跳检测：每 30 秒 ping，10 秒内无 pong 则终止
+const heartbeatInterval = setInterval(() => {
+  for (const ws of clients) {
+    if (!(ws as any).isAlive) {
+      log.ws('心跳超时，终止连接')
+      clients.delete(ws)
+      ws.terminate()
+      continue
+    }
+    ;(ws as any).isAlive = false
+    ws.ping()
+  }
+}, 30_000)
+
+server.on('close', () => {
+  clearInterval(heartbeatInterval)
 })
 
 // 广播函数

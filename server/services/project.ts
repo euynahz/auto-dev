@@ -1,4 +1,5 @@
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 import { log } from '../lib/logger.js'
@@ -17,6 +18,17 @@ function ensureDir(dir: string) {
 
 ensureDir(DATA_DIR)
 ensureDir(PROJECTS_DIR)
+
+// ===== 路径沙箱 =====
+
+export function isPathSafe(targetPath: string): boolean {
+  const resolved = path.resolve(targetPath)
+  const homeDir = os.homedir()
+  const cwd = process.cwd()
+  return resolved.startsWith(homeDir + path.sep) || resolved === homeDir
+    || resolved.startsWith('/tmp' + path.sep) || resolved === '/tmp'
+    || resolved.startsWith(cwd + path.sep) || resolved === cwd
+}
 
 // ===== 项目管理 =====
 
@@ -39,6 +51,7 @@ function writeJson(filePath: string, data: unknown) {
 
 // 检查目录是否存在且有内容
 export function checkDir(dirPath: string): { exists: boolean; hasContent: boolean; entries: string[] } {
+  if (!isPathSafe(dirPath)) throw new Error('路径不在允许范围内')
   if (!fs.existsSync(dirPath)) return { exists: false, hasContent: false, entries: [] }
   const stat = fs.statSync(dirPath)
   if (!stat.isDirectory()) return { exists: false, hasContent: false, entries: [] }
@@ -97,6 +110,7 @@ export function createProject(name: string, spec: string, model = 'claude-opus-4
 
 // 导入已有项目
 export function importProject(name: string, dirPath: string, model = 'claude-opus-4-6', concurrency = 1, useAgentTeams = false, systemPrompt?: string, reviewBeforeCoding?: boolean, taskPrompt?: string): ProjectData {
+  if (!isPathSafe(dirPath)) throw new Error('路径不在允许范围内')
   // 验证目录存在
   if (!fs.existsSync(dirPath)) {
     throw new Error(`目录不存在: ${dirPath}`)

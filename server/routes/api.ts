@@ -1,10 +1,31 @@
 import { Router } from 'express'
+import type { Request, Response, NextFunction } from 'express'
 import fs from 'fs'
+import path from 'path'
 import * as projectService from '../services/project.js'
 import * as agentService from '../services/agent.js'
 import { log } from '../lib/logger.js'
 
 const router = Router()
+
+// Token 认证中间件
+function authMiddleware(req: Request, res: Response, next: NextFunction) {
+  const token = process.env.AUTODEV_TOKEN
+  if (!token) return next() // 未设置则跳过认证
+
+  // 从 Authorization header 或查询参数获取 token
+  const authHeader = req.headers.authorization
+  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined
+  const queryToken = req.query.token as string | undefined
+
+  if (headerToken === token || queryToken === token) {
+    return next()
+  }
+
+  res.status(401).json({ error: 'Unauthorized' })
+}
+
+router.use(authMiddleware)
 
 // 获取项目列表
 router.get('/projects', (_req, res) => {
@@ -37,6 +58,9 @@ router.get('/projects/:id', (req, res) => {
 router.post('/check-dir', (req, res) => {
   const { path: dirPath } = req.body
   if (!dirPath) return res.status(400).json({ message: '路径不能为空' })
+  if (!projectService.isPathSafe(dirPath)) {
+    return res.status(400).json({ error: '路径不在允许范围内' })
+  }
   const result = projectService.checkDir(dirPath)
   res.json(result)
 })
@@ -140,6 +164,13 @@ router.get('/projects/:id/sessions/:sessionId/raw-log', (req, res) => {
   const session = sessions.find((s) => s.id === req.params.sessionId)
   if (!session) return res.status(404).json({ message: 'Session 不存在' })
   if (!session.logFile) return res.status(404).json({ message: '该 Session 无日志文件' })
+
+  // 路径沙箱：日志文件必须在 .autodev-data/claude-logs/ 目录下
+  const resolvedLog = path.resolve(session.logFile)
+  const allowedLogDir = path.resolve(path.join('.autodev-data', 'claude-logs'))
+  if (!resolvedLog.startsWith(allowedLogDir + path.sep) && resolvedLog !== allowedLogDir) {
+    return res.status(400).json({ error: '路径不在允许范围内' })
+  }
 
   if (!fs.existsSync(session.logFile)) {
     return res.status(404).json({ message: '日志文件不存在' })

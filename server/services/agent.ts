@@ -1192,6 +1192,9 @@ export function startReviewSession(projectId: string, featureIds: string[], inst
 }
 
 // 确认审查并开始编码
+// ===== 导出纯函数用于测试 =====
+export { textSimilarity, parseThinkingContent }
+
 export function confirmReview(projectId: string) {
   const project = projectService.getProject(projectId)
   if (!project) throw new Error('项目不存在')
