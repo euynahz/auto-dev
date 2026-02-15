@@ -1,5 +1,7 @@
 # AutoDev
 
+[![GitHub](https://img.shields.io/badge/GitHub-euynahz%2Fauto--dev-blue?logo=github)](https://github.com/euynahz/auto-dev)
+
 AI 全自动开发平台，支持多 AI 工具后端。输入需求或导入已有项目，AI Agent 自动拆解为功能点并逐个实现，支持多 Agent 并行开发。
 
 ![Screenshot](./assets/screenshot.png)
