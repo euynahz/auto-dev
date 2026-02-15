@@ -17,23 +17,16 @@ The underlying AI tooling is fully decoupled, adapting to different AI coding to
 - **Capability Declaration** — Each provider declares its supported features (streaming / maxTurns / systemPrompt / agentTeams / modelSelection / dangerousMode); the system adapts automatically
 - **`GET /api/providers`** — Frontend dynamically fetches available providers and their capabilities; UI adapts on the fly
 
-### 🧠 Two-Phase Initialization
+### 🧠 Two-Phase Initialization (Anthropic-Inspired)
 
-Inspired by structured planning methodologies, AutoDev splits project initialization into two sequential phases:
+Based on Anthropic's [Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), AutoDev implements a structured dual-agent pipeline:
 
 - **Phase 1: Architecture Analysis** — A dedicated agent reads the project spec and produces `architecture.md`: tech stack, directory structure, core abstractions, API design, data model, and key architectural decisions
-- **Phase 2: Task Decomposition** — The Initializer Agent reads both `app_spec.txt` and `architecture.md` to decompose requirements into features, ensuring every task aligns with the architectural blueprint
-- **Feature Context Files** — Each feature gets a `.features/feature-{id}.md` file containing architecture context, related files, dependency graph, and implementation notes — giving coding agents full situational awareness without relying on prompt injection
+- **Phase 2: Task Decomposition** — The Initializer Agent reads both `app_spec.txt` and `architecture.md` to decompose requirements into a `feature_list.json` — the single source of truth where only the `passes` field may be modified
+- **Feature Context Files** — Each feature gets a `.features/feature-{id}.md` file containing architecture context, related files, dependency graph, and implementation notes — giving coding agents full situational awareness
 - **Automatic Chaining** — Phase 1 completes → 3s delay → Phase 2 starts automatically; no manual intervention needed
-
-### 🧠 Based on Anthropic's Long-Running Agent Research
-
-Implements the core patterns from Anthropic's paper [Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents):
-
-- **Dual-Agent Architecture** — An Architecture + Initializer pipeline decomposes requirements into a Feature List; Coding Agents implement them one by one
-- **feature_list.json as Single Source of Truth** — JSON format where only the `passes` field can be modified, preventing agents from tampering with or omitting requirements
 - **Incremental Progress** — Each session tackles one feature, commits on completion, ensuring the codebase is always mergeable
-- **Context Bridging** — Uses `claude-progress.txt` + `git log` to bring new sessions up to speed on project state, solving the memory fragmentation problem across context windows
+- **Context Bridging** — Uses `claude-progress.txt` + `git log` to bring new sessions up to speed, solving the memory fragmentation problem across context windows
 
 ### 🔀 Multi-Agent Parallel Development
 
@@ -105,11 +98,10 @@ Optional per-project verification command that runs before any feature is marked
 
 ### 🤝 Human-in-the-Loop Collaboration
 
-Agents aren't isolated — they proactively ask for help when stuck:
+Agents aren't isolated — they proactively communicate when they need help or discover gaps:
 
-- When an agent outputs `[HUMAN_HELP] problem description`, the system automatically captures it and pushes a notification to the frontend
-- User responses are written to `.human-response.md`; the agent reads it on next startup and continues
-- Useful for missing configurations, ambiguous requirements, or decisions that need human judgment
+- **Human Help** — When an agent outputs `[HUMAN_HELP] problem description`, the system captures it and pushes a notification to the frontend. User responses are written to `.human-response.md`; the agent reads it on next startup and continues
+- **Feature Proposals** — When a coding agent discovers missing functionality during implementation (e.g. a shared utility, a missing API endpoint), it outputs `[NEW_FEATURE] {...}`. The system auto-parses, deduplicates, appends to `feature_list.json`, and broadcasts to the frontend. The next idle agent picks it up automatically — no human intervention needed for plan evolution
 
 ### 🛡️ Production-Grade Robustness
 
@@ -225,6 +217,8 @@ The frontend provider selector automatically picks up the new option — zero UI
 │   ├── providers/             # AI Provider plugin layer
 │   │   ├── types.ts           # AgentProvider interface + AgentEvent normalized events
 │   │   ├── claude.ts          # Claude Code CLI implementation
+│   │   ├── codex.ts           # OpenAI Codex CLI implementation
+│   │   ├── opencode.ts        # OpenCode CLI implementation
 │   │   └── registry.ts        # Provider registry + query API
 │   ├── services/
 │   │   ├── agent.ts           # Agent scheduling engine (core, provider-agnostic)
@@ -248,7 +242,9 @@ The frontend provider selector automatically picks up the new option — zero UI
 │   │   ├── project/           # CreateProjectDialog, ImportProjectDialog, FeatureList
 │   │   └── agent/             # AgentLog, SessionTimeline, HelpDialog
 │   ├── store/index.ts         # Zustand global state
-│   ├── hooks/useWebSocket.ts  # WebSocket connection management (exponential backoff)
+│   ├── hooks/
+│   │   ├── useWebSocket.ts    # WebSocket connection management (exponential backoff)
+│   │   └── useProviders.ts    # Provider list fetching with cache + fallback
 │   └── lib/api.ts             # API client
 └── .autodev-data/             # Runtime data (auto-created)
     ├── projects/              # Project metadata + features + sessions + logs (JSONL)
@@ -278,7 +274,7 @@ The frontend provider selector automatically picks up the new option — zero UI
 | POST | `/api/projects/:id/confirm-review` | Confirm review and start coding |
 | POST | `/api/projects/:id/append-spec` | Append requirements at runtime |
 
-WebSocket `/ws` push message types: `log`, `status`, `progress`, `feature_update`, `features_sync`, `session_update`, `agent_count`, `human_help`
+WebSocket `/ws` push message types: `log`, `status`, `progress`, `feature_update`, `features_sync`, `session_update`, `agent_count`, `human_help`, `feature_proposal`
 
 ## AI Agent Workflow
 
