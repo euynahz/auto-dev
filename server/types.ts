@@ -6,6 +6,7 @@ export interface ProjectData {
   spec: string
   status: 'idle' | 'initializing' | 'reviewing' | 'running' | 'paused' | 'completed' | 'error'
   provider: string    // AI provider: 'claude' | 'codex' | 'gemini' | ...
+  providerSettings?: Record<string, unknown>  // Provider 专属设置
   model: string
   concurrency: number // 并发 Agent 数量，默认 1
   useAgentTeams: boolean // 使用 Agent Teams 模式（provider 支持时，内部协调多 Agent）

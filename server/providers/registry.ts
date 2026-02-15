@@ -38,12 +38,16 @@ export function listProviders(): string[] {
 export function getProviderSummaries(): Array<{
   name: string
   displayName: string
+  defaultModel?: string
   capabilities: AgentProvider['capabilities']
+  settings?: AgentProvider['settings']
 }> {
   return Array.from(providers.values()).map(p => ({
     name: p.name,
     displayName: p.displayName,
+    ...(p.defaultModel ? { defaultModel: p.defaultModel } : {}),
     capabilities: p.capabilities,
+    ...(p.settings?.length ? { settings: p.settings } : {}),
   }))
 }
 

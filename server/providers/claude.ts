@@ -61,6 +61,7 @@ export const claudeProvider: AgentProvider = {
   name: 'claude',
   displayName: 'Claude Code',
   binary: 'claude',
+  defaultModel: 'claude-opus-4-6',
 
   capabilities: {
     streaming: true,
@@ -71,20 +72,41 @@ export const claudeProvider: AgentProvider = {
     dangerousMode: true,
   },
 
+  settings: [
+    {
+      key: 'verbose',
+      label: '详细输出',
+      description: '输出完整的 stream-json 事件流',
+      type: 'boolean',
+      default: true,
+    },
+    {
+      key: 'disableSlashCommands',
+      label: '禁用斜杠命令',
+      description: '防止 Agent 意外触发 /commands',
+      type: 'boolean',
+      default: true,
+    },
+  ],
+
   buildArgs(ctx: SessionContext): string[] {
+    const ps = ctx.providerSettings || {}
+    const verbose = ps.verbose !== false       // default true
+    const disableSlash = ps.disableSlashCommands !== false  // default true
+
     const args = [
       '-p', ctx.prompt,
       '--output-format', 'stream-json',
-      '--verbose',
       '--max-turns', String(ctx.maxTurns),
     ]
+    if (verbose) args.push('--verbose')
     if (ctx.model) {
       args.push('--model', ctx.model)
     }
     if (ctx.dangerousMode !== false) {
       args.push('--dangerously-skip-permissions')
     }
-    if (ctx.disableSlashCommands !== false) {
+    if (disableSlash) {
       args.push('--disable-slash-commands')
     }
     if (ctx.systemPrompt) {

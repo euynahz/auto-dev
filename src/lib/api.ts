@@ -1,4 +1,4 @@
-import type { Project, LogEntry, HelpRequest, CreateProjectRequest, ImportProjectRequest } from '@/types'
+import type { Project, LogEntry, HelpRequest, CreateProjectRequest, ImportProjectRequest, ProviderInfo } from '@/types'
 
 const BASE = '/api'
 
@@ -16,6 +16,9 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 // 项目 API
 export const api = {
+  // 获取可用 AI Providers
+  getProviders: () => request<ProviderInfo[]>('/providers'),
+
   // 检查目录内容
   checkDir: (path: string) =>
     request<{ exists: boolean; hasContent: boolean; entries: string[] }>('/check-dir', {

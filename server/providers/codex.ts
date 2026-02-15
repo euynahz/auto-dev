@@ -7,29 +7,45 @@ export const codexProvider: AgentProvider = {
   name: 'codex',
   displayName: 'Codex CLI',
   binary: 'codex',
+  defaultModel: 'o4-mini',
 
   capabilities: {
     streaming: true,
-    maxTurns: false,        // codex 没有 max-turns 概念
-    systemPrompt: false,    // 不支持 --system-prompt
+    maxTurns: false,
+    systemPrompt: false,
     agentTeams: false,
     modelSelection: true,
-    dangerousMode: true,    // --sandbox danger-full-access
+    dangerousMode: true,
   },
 
+  settings: [
+    {
+      key: 'sandbox',
+      label: '沙箱模式',
+      description: '控制 Codex 对文件系统的访问权限',
+      type: 'select',
+      default: 'danger-full-access',
+      options: [
+        { value: 'read-only', label: '只读' },
+        { value: 'workspace-write', label: '工作区可写' },
+        { value: 'danger-full-access', label: '完全访问（危险）' },
+      ],
+    },
+  ],
+
   buildArgs(ctx: SessionContext): string[] {
+    const ps = ctx.providerSettings || {}
+    const sandbox = (ps.sandbox as string) || 'danger-full-access'
+
     const args = [
       'exec',
       '--full-auto',
       '--json',
+      '--sandbox', sandbox,
     ]
     if (ctx.model) {
       args.push('--model', ctx.model)
     }
-    if (ctx.dangerousMode !== false) {
-      args.push('--sandbox', 'danger-full-access')
-    }
-    // prompt 放最后
     args.push(ctx.prompt)
     return args
   },
@@ -41,7 +57,6 @@ export const codexProvider: AgentProvider = {
     try {
       const event = JSON.parse(trimmed)
 
-      // Codex JSON 事件格式：{ type: "...", ... }
       switch (event.type) {
         case 'message': {
           const content = event.content || event.text || ''
@@ -62,24 +77,20 @@ export const codexProvider: AgentProvider = {
           return { type: 'tool_result', output: String(output).slice(0, 500) }
         }
 
-        case 'error': {
+        case 'error':
           return { type: 'error', content: event.message || event.error || JSON.stringify(event) }
-        }
 
         case 'status':
-        case 'progress': {
+        case 'progress':
           return { type: 'system', content: event.message || event.status || '' }
-        }
 
-        case 'thinking': {
+        case 'thinking':
           return { type: 'thinking', content: (event.content || event.text || '').slice(0, 300) }
-        }
 
         default:
           return { type: 'ignore' }
       }
     } catch {
-      // 非 JSON — 当作系统消息
       if (trimmed) {
         return { type: 'system', content: trimmed.slice(0, 500) }
       }

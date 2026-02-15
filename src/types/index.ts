@@ -19,6 +19,7 @@ export interface Project {
   spec: string
   status: ProjectStatus
   provider: string
+  providerSettings?: Record<string, unknown>
   model: string
   concurrency: number
   useAgentTeams: boolean
@@ -98,6 +99,7 @@ export interface CreateProjectRequest {
   path?: string
   forceClean?: boolean
   provider?: string
+  providerSettings?: Record<string, unknown>
   model?: string
   concurrency?: number
   useAgentTeams?: boolean
@@ -110,9 +112,40 @@ export interface ImportProjectRequest {
   path: string
   taskPrompt?: string
   provider?: string
+  providerSettings?: Record<string, unknown>
   model?: string
   concurrency?: number
   useAgentTeams?: boolean
   systemPrompt?: string
   reviewBeforeCoding?: boolean
+}
+
+// ===== Provider 类型 =====
+
+export interface ProviderCapabilities {
+  streaming: boolean
+  maxTurns: boolean
+  systemPrompt: boolean
+  agentTeams: boolean
+  modelSelection: boolean
+  dangerousMode: boolean
+}
+
+export interface ProviderSetting {
+  key: string
+  label: string
+  description?: string
+  type: 'boolean' | 'string' | 'select' | 'number'
+  default: unknown
+  options?: Array<{ value: string; label: string }>
+  min?: number
+  max?: number
+}
+
+export interface ProviderInfo {
+  name: string
+  displayName: string
+  defaultModel?: string
+  capabilities: ProviderCapabilities
+  settings?: ProviderSetting[]
 }

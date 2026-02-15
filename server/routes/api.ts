@@ -73,13 +73,13 @@ router.post('/check-dir', (req, res) => {
 
 // 创建项目
 router.post('/projects', (req, res) => {
-  const { name, spec, path: dirPath, forceClean, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, provider } = req.body
+  const { name, spec, path: dirPath, forceClean, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, provider, providerSettings } = req.body
   if (!name || !spec) {
     return res.status(400).json({ message: '名称和需求描述不能为空' })
   }
 
   log.api(`POST /projects — 创建项目: ${name} (path=${dirPath || '(auto)'}, provider=${provider || 'claude'}, model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
-  const project = projectService.createProject(name, spec, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, dirPath, forceClean, provider)
+  const project = projectService.createProject(name, spec, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, dirPath, forceClean, provider, providerSettings)
   res.json({
     ...project,
     features: [],
@@ -90,14 +90,14 @@ router.post('/projects', (req, res) => {
 
 // 导入已有项目
 router.post('/projects/import', (req, res) => {
-  const { name, path: dirPath, taskPrompt, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, provider } = req.body
+  const { name, path: dirPath, taskPrompt, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, provider, providerSettings } = req.body
   if (!name || !dirPath) {
     return res.status(400).json({ message: '名称和目录路径不能为空' })
   }
 
   log.api(`POST /projects/import — 导入项目: ${name} (path=${dirPath}, agentTeams=${!!useAgentTeams})`)
   try {
-    const project = projectService.importProject(name, dirPath, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, taskPrompt, provider)
+    const project = projectService.importProject(name, dirPath, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, taskPrompt, provider, providerSettings)
     res.json({
       ...project,
       features: [],

@@ -603,10 +603,12 @@ function spawnAgentSession(config: SpawnSessionConfig): void {
     dangerousMode: true,
     disableSlashCommands: true,
     verbose: true,
+    providerSettings: project.providerSettings,
   })
   const extraEnv = provider.buildEnv?.({
     prompt, model: project.model, maxTurns,
     projectDir: project.projectDir,
+    providerSettings: project.providerSettings,
   }) || {}
 
   const proc = spawn(provider.binary, args, {

@@ -10,6 +10,8 @@ export interface SessionContext {
   dangerousMode?: boolean    // 跳过权限确认
   disableSlashCommands?: boolean
   verbose?: boolean
+  /** Provider 专属设置（来自项目配置） */
+  providerSettings?: Record<string, unknown>
 }
 
 /** Provider 能力声明 */
@@ -20,6 +22,20 @@ export interface ProviderCapabilities {
   agentTeams: boolean         // 支持内置多 agent 协调
   modelSelection: boolean     // 支持指定模型
   dangerousMode: boolean      // 支持跳过权限确认
+}
+
+/** Provider 专属设置项 schema — 前端据此动态渲染控件 */
+export interface ProviderSetting {
+  key: string
+  label: string
+  description?: string
+  type: 'boolean' | 'string' | 'select' | 'number'
+  default: unknown
+  /** type='select' 时的选项列表 */
+  options?: Array<{ value: string; label: string }>
+  /** type='number' 时的范围 */
+  min?: number
+  max?: number
 }
 
 /** 标准化输出事件 — 所有 provider 的 stdout 都转成这个 */
@@ -43,8 +59,14 @@ export interface AgentProvider {
   /** CLI 可执行文件名 */
   binary: string
 
+  /** 默认模型名（前端 placeholder 用） */
+  defaultModel?: string
+
   /** 能力声明 */
   capabilities: ProviderCapabilities
+
+  /** Provider 专属设置 schema */
+  settings?: ProviderSetting[]
 
   /** 构建 CLI 启动参数 */
   buildArgs(ctx: SessionContext): string[]
