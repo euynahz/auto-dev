@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid'
 import fs from 'fs'
 import path from 'path'
 import * as projectService from './project.js'
+import { transition } from './state-machine.js'
+import type { TransitionResult } from './state-machine.js'
 import { log } from '../lib/logger.js'
 import type { BroadcastMessage, LogEntryData, ProjectData, SessionData, HelpRequestData } from '../types.js'
 
@@ -13,11 +15,29 @@ export function setBroadcast(fn: (msg: BroadcastMessage) => void) {
   broadcast = fn
 }
 
+// 统一处理状态转换结果
+function applyTransition(projectId: string, result: TransitionResult) {
+  if (result.newStatus) {
+    projectService.updateProject(projectId, { status: result.newStatus })
+    broadcast({ type: 'status', projectId, status: result.newStatus })
+  }
+  if (result.stopWatcher) {
+    stopFeatureWatcher(projectId)
+  }
+}
+
 // Claude 原始日志目录
 const LOGS_DIR = path.join(process.cwd(), '.autodev-data', 'claude-logs')
 function ensureLogsDir() {
   if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true })
 }
+
+// ===== 常量 =====
+const SIGKILL_DELAY_MS = 5000        // SIGTERM 后等待多久发 SIGKILL
+const SESSION_CHAIN_DELAY_MS = 3000  // session 结束后多久启动下一个
+const SESSION_RETRY_DELAY_MS = 5000  // 失败后重试延迟
+const MAX_RETRY_PER_FEATURE = 3      // 单个 feature 最大重试次数
+const SESSION_WALL_TIMEOUT_MS = 30 * 60 * 1000  // 30 分钟墙钟超时
 
 // 创建 session 日志文件，返回写入流
 function createLogFile(sessionId: string): { filePath: string; stream: fs.WriteStream } {
@@ -51,7 +71,7 @@ function killProcessTree(pid: number) {
           log.agent(`发送 SIGKILL 到 PID ${pid}`)
         }
       } catch { /* already dead */ }
-    }, 3000)
+    }, SIGKILL_DELAY_MS)
   } catch {
     log.agent(`PID ${pid} 已不存在`)
   }
@@ -82,6 +102,9 @@ const watchers = new Map<string, ReturnType<typeof setInterval>>()
 // 循环检测：sessionId -> 最近的 assistant 消息
 const recentMessages = new Map<string, string[]>()
 const LOOP_DETECT_COUNT = 5 // 连续相似消息数阈值
+
+// Feature 重试计数：projectId:featureId -> 失败次数
+const featureRetryCount = new Map<string, number>()
 
 // 文本相似度（Jaccard 系数，忽略短词）
 function textSimilarity(a: string, b: string): number {
@@ -139,7 +162,7 @@ function checkLoopAndKill(sessionId: string, projectId: string, content: string,
         agent.process.kill('SIGTERM')
         setTimeout(() => {
           try { agent.process.kill('SIGKILL') } catch { /* already dead */ }
-        }, 3000)
+        }, SIGKILL_DELAY_MS)
         break
       }
     }
@@ -482,12 +505,30 @@ function claimFeature(projectId: string, agentIndex: number): { id: string; desc
   }
   claimedFeatures.get(projectId)!.set(feature.id, agentIndex)
 
+  // 持久化 claimed 状态
+  const claimedData = Object.fromEntries(claimedFeatures.get(projectId)!)
+  projectService.saveClaimedFeaturesData(projectId, claimedData)
+
+  // 系统级设置 inProgress
+  projectService.setFeatureInProgress(projectId, feature.id, true)
+
   return { id: feature.id, description: feature.description, steps: feature.steps }
 }
 
 // 释放 feature 认领
 function releaseFeature(projectId: string, featureId: string) {
   claimedFeatures.get(projectId)?.delete(featureId)
+
+  // 持久化 claimed 状态
+  const claimed = claimedFeatures.get(projectId)
+  if (claimed) {
+    projectService.saveClaimedFeaturesData(projectId, Object.fromEntries(claimed))
+  } else {
+    projectService.saveClaimedFeaturesData(projectId, {})
+  }
+
+  // 系统级清除 inProgress
+  projectService.setFeatureInProgress(projectId, featureId, false)
 }
 
 // 广播活跃 Agent 数量
@@ -648,12 +689,35 @@ function spawnClaudeSession(config: SpawnSessionConfig): void {
     }
   }, 15000) : null
 
+  // 墙钟超时：30 分钟无 stdout 输出自动 kill
+  let wallTimer: ReturnType<typeof setTimeout> | null = null
+  function resetWallTimer() {
+    if (wallTimer) clearTimeout(wallTimer)
+    wallTimer = setTimeout(() => {
+      log.agent(`⏰ Session 墙钟超时 (${SESSION_WALL_TIMEOUT_MS / 60000}min 无输出)，自动终止 (agent=${agentIndex})`)
+      const entry = createLogEntry(sessionId, 'error',
+        `⏰ 墙钟超时：${SESSION_WALL_TIMEOUT_MS / 60000} 分钟无输出，自动终止`, agentIndex)
+      projectService.addLog(projectId, entry)
+      broadcast({ type: 'log', projectId, entry })
+      const agent = runningAgents.get(projectId)?.get(agentIndex)
+      if (agent) {
+        agent.stopped = true
+        agent.process.kill('SIGTERM')
+        setTimeout(() => {
+          try { agent.process.kill('SIGKILL') } catch { /* already dead */ }
+        }, SIGKILL_DELAY_MS)
+      }
+    }, SESSION_WALL_TIMEOUT_MS)
+  }
+  resetWallTimer()
+
   let buffer = ''
   proc.stdout?.on('data', (chunk: Buffer) => {
     if (!gotOutput) {
       gotOutput = true
       if (heartbeatTimer) clearTimeout(heartbeatTimer)
     }
+    resetWallTimer()
     const raw = chunk.toString()
     logFile.stream.write(raw)
     buffer += raw
@@ -682,6 +746,7 @@ function spawnClaudeSession(config: SpawnSessionConfig): void {
 
   proc.on('close', (code) => {
     if (heartbeatTimer) clearTimeout(heartbeatTimer)
+    if (wallTimer) clearTimeout(wallTimer)
     logFile.stream.write(`\n=== Session ended at ${new Date().toISOString()} (exit code: ${code}) ===\n`)
     logFile.stream.end()
     recentMessages.delete(sessionId)
@@ -716,6 +781,7 @@ function spawnClaudeSession(config: SpawnSessionConfig): void {
 
   proc.on('error', (err) => {
     if (heartbeatTimer) clearTimeout(heartbeatTimer)
+    if (wallTimer) clearTimeout(wallTimer)
     logFile.stream.end()
     const entry = createLogEntry(sessionId, 'error', `进程错误: ${err.message}`, agentIndex)
     projectService.addLog(projectId, entry)
@@ -725,8 +791,10 @@ function spawnClaudeSession(config: SpawnSessionConfig): void {
     agents?.delete(agentIndex)
     if (agents && agents.size === 0) {
       runningAgents.delete(projectId)
-      projectService.updateProject(projectId, { status: 'error' })
-      broadcast({ type: 'status', projectId, status: 'error' })
+      const currentStatus = projectService.getProject(projectId)?.status
+      if (currentStatus) {
+        applyTransition(projectId, transition(currentStatus, { type: 'ERROR' }))
+      }
     }
     broadcastAgentCount(projectId)
   })
@@ -754,24 +822,24 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
       const progress = projectService.getProgress(projectId)
       broadcast({ type: 'progress', projectId, progress })
 
-      // initializer 结束后，如果已生成 features，将状态从 initializing 转为 running 或 reviewing
+      // initializer 结束后的状态转换
       const currentStatus = projectService.getProject(projectId)?.status
-      if (currentStatus === 'initializing' && progress.total > 0) {
-        const latestProject = projectService.getProject(projectId)
-        if (latestProject?.reviewBeforeCoding) {
-          projectService.updateProject(projectId, { status: 'reviewing' })
-          broadcast({ type: 'status', projectId, status: 'reviewing' })
-          log.agent(`初始化完成，进入审查模式 (${progress.total} 个 feature)`)
-        } else {
-          projectService.updateProject(projectId, { status: 'running' })
-          broadcast({ type: 'status', projectId, status: 'running' })
-          log.agent(`初始化完成，features 已生成 (${progress.total} 个)，状态转为 running`)
+      if (currentStatus === 'initializing') {
+        if (progress.total > 0) {
+          const latestProject = projectService.getProject(projectId)
+          const result = transition('initializing', {
+            type: 'INIT_COMPLETE',
+            hasFeatures: true,
+            reviewMode: latestProject?.reviewBeforeCoding || false,
+          })
+          applyTransition(projectId, result)
+          log.agent(result.newStatus === 'reviewing'
+            ? `初始化完成，进入审查模式 (${progress.total} 个 feature)`
+            : `初始化完成，features 已生成 (${progress.total} 个)，状态转为 running`)
+        } else if (!wasStopped) {
+          applyTransition(projectId, transition('initializing', { type: 'INIT_FAILED' }))
+          log.agent(`初始化失败，未生成任何 feature，状态转为 error`)
         }
-      } else if (currentStatus === 'initializing' && progress.total === 0 && !wasStopped) {
-        projectService.updateProject(projectId, { status: 'error' })
-        broadcast({ type: 'status', projectId, status: 'error' })
-        stopFeatureWatcher(projectId)
-        log.agent(`初始化失败，未生成任何 feature，状态转为 error`)
       }
 
       // reviewing 状态下不自动启动 coding session
@@ -785,7 +853,7 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
           setTimeout(() => {
             const proj = projectService.getProject(projectId)
             if (proj && proj.status === 'running') startParallelSession(projectId, ai)
-          }, 3000)
+          }, SESSION_CHAIN_DELAY_MS)
         } else {
           const nextEntry = createLogEntry(sessionId, 'system', '3 秒后启动下一个 Session...', ai)
           projectService.addLog(projectId, nextEntry)
@@ -793,19 +861,14 @@ function startSession(projectId: string, type: 'initializer' | 'coding', agentIn
           setTimeout(() => {
             const currentProj = projectService.getProject(projectId)
             if (currentProj && currentProj.status === 'running') startSession(projectId, 'coding', 0)
-          }, 3000)
+          }, SESSION_CHAIN_DELAY_MS)
         }
       } else if (progress.total > 0 && progress.passed >= progress.total) {
-        projectService.updateProject(projectId, { status: 'completed' })
-        broadcast({ type: 'status', projectId, status: 'completed' })
-        stopFeatureWatcher(projectId)
+        applyTransition(projectId, transition(postStatus || 'running', { type: 'SESSION_COMPLETE', allDone: true }))
       } else if (wasStopped) {
         const agents2 = runningAgents.get(projectId)
-        if (!agents2 || agents2.size === 0) {
-          projectService.updateProject(projectId, { status: 'paused' })
-          broadcast({ type: 'status', projectId, status: 'paused' })
-          stopFeatureWatcher(projectId)
-        }
+        const allStopped = !agents2 || agents2.size === 0
+        applyTransition(projectId, transition(postStatus || 'running', { type: 'STOP', allAgentsStopped: allStopped }))
       }
     },
   })
@@ -850,9 +913,15 @@ function startParallelSession(projectId: string, agentIndex: number) {
       branch,
       featureId: feature.id,
       onClose({ code, wasStopped, endStatus, sessionId }) {
+        // 失败时记录尝试次数
+        if (endStatus === 'failed') {
+          projectService.markFeatureAttempt(projectId, feature.id)
+        }
         releaseFeature(projectId, feature.id)
 
         if (!wasStopped && code === 0) {
+          // 成功完成，清理重试计数
+          featureRetryCount.delete(`${projectId}:${feature.id}`)
           withGitLock(projectId, async () => {
             const mergeEntry = createLogEntry(sessionId, 'system',
               `🔀 Agent ${agentIndex}: 合并分支 ${branch} 到 main...`, agentIndex)
@@ -877,29 +946,43 @@ function startParallelSession(projectId: string, agentIndex: number) {
             broadcast({ type: 'progress', projectId, progress })
 
             if (progress.total > 0 && progress.passed >= progress.total) {
-              projectService.updateProject(projectId, { status: 'completed' })
-              broadcast({ type: 'status', projectId, status: 'completed' })
-              stopFeatureWatcher(projectId)
+              applyTransition(projectId, transition('running', { type: 'SESSION_COMPLETE', allDone: true }))
               return
             }
 
             const proj = projectService.getProject(projectId)
             if (proj && proj.status === 'running') {
-              setTimeout(() => startParallelSession(projectId, agentIndex), 3000)
+              setTimeout(() => startParallelSession(projectId, agentIndex), SESSION_CHAIN_DELAY_MS)
             }
           }).catch(() => { /* git lock error */ })
         } else if (wasStopped) {
           const agents2 = runningAgents.get(projectId)
-          if (!agents2 || agents2.size === 0) {
-            projectService.updateProject(projectId, { status: 'paused' })
-            broadcast({ type: 'status', projectId, status: 'paused' })
-            stopFeatureWatcher(projectId)
-          }
+          const allStopped = !agents2 || agents2.size === 0
+          applyTransition(projectId, transition('running', { type: 'STOP', allAgentsStopped: allStopped }))
         } else {
-          // 非正常退出，延迟重试
-          const proj = projectService.getProject(projectId)
-          if (proj && proj.status === 'running') {
-            setTimeout(() => startParallelSession(projectId, agentIndex), 5000)
+          // 非正常退出，检查重试上限
+          const retryKey = `${projectId}:${feature.id}`
+          const retries = (featureRetryCount.get(retryKey) || 0) + 1
+          featureRetryCount.set(retryKey, retries)
+
+          if (retries >= MAX_RETRY_PER_FEATURE) {
+            log.agent(`Agent ${agentIndex}: Feature ${feature.id} 已失败 ${retries} 次，达到重试上限，跳过`)
+            const skipEntry = createLogEntry(sessionId, 'error',
+              `⚠️ Feature ${feature.id} 已失败 ${retries} 次（上限 ${MAX_RETRY_PER_FEATURE}），不再重试`, agentIndex)
+            projectService.addLog(projectId, skipEntry)
+            broadcast({ type: 'log', projectId, entry: skipEntry })
+            featureRetryCount.delete(retryKey)
+            // 继续领取下一个 feature
+            const proj = projectService.getProject(projectId)
+            if (proj && proj.status === 'running') {
+              setTimeout(() => startParallelSession(projectId, agentIndex), SESSION_CHAIN_DELAY_MS)
+            }
+          } else {
+            log.agent(`Agent ${agentIndex}: Feature ${feature.id} 失败，第 ${retries}/${MAX_RETRY_PER_FEATURE} 次重试`)
+            const proj = projectService.getProject(projectId)
+            if (proj && proj.status === 'running') {
+              setTimeout(() => startParallelSession(projectId, agentIndex), SESSION_RETRY_DELAY_MS)
+            }
           }
         }
       },
@@ -928,18 +1011,13 @@ function startAgentTeamsSession(projectId: string) {
       const progress = projectService.getProgress(projectId)
       broadcast({ type: 'progress', projectId, progress })
 
+      const currentStatus = projectService.getProject(projectId)?.status || 'running'
       if (progress.total > 0 && progress.passed >= progress.total) {
-        projectService.updateProject(projectId, { status: 'completed' })
-        broadcast({ type: 'status', projectId, status: 'completed' })
-        stopFeatureWatcher(projectId)
+        applyTransition(projectId, transition(currentStatus, { type: 'SESSION_COMPLETE', allDone: true }))
       } else if (wasStopped) {
-        projectService.updateProject(projectId, { status: 'paused' })
-        broadcast({ type: 'status', projectId, status: 'paused' })
-        stopFeatureWatcher(projectId)
+        applyTransition(projectId, transition(currentStatus, { type: 'STOP', allAgentsStopped: true }))
       } else {
-        projectService.updateProject(projectId, { status: 'error' })
-        broadcast({ type: 'status', projectId, status: 'error' })
-        stopFeatureWatcher(projectId)
+        applyTransition(projectId, transition(currentStatus, { type: 'ERROR' }))
       }
     },
   })
@@ -954,6 +1032,25 @@ export function initRecovery() {
   let recovered = 0
 
   for (const project of projects) {
+    // 恢复 claimedFeatures 从 claimed.json
+    const claimedData = projectService.getClaimedFeaturesData(project.id)
+    if (Object.keys(claimedData).length > 0) {
+      const features = projectService.getFeatures(project.id)
+      const passedIds = new Set(features.filter((f) => f.passes).map((f) => f.id))
+      const cleanedData: Record<string, number> = {}
+      for (const [fid, idx] of Object.entries(claimedData)) {
+        if (!passedIds.has(fid)) {
+          cleanedData[fid] = idx
+        }
+      }
+      // 服务重启后进程已不在，清空认领记录并重置 inProgress
+      for (const fid of Object.keys(claimedData)) {
+        projectService.setFeatureInProgress(project.id, fid, false)
+      }
+      projectService.saveClaimedFeaturesData(project.id, {})
+      log.server(`清理项目 ${project.name} 的 claimed features (${Object.keys(claimedData).length} 个)`)
+    }
+
     if (project.status !== 'running' && project.status !== 'initializing' && project.status !== 'reviewing') continue
 
     log.server(`发现未正常关闭的项目: ${project.name} (${project.id}), status=${project.status}`)
@@ -999,43 +1096,36 @@ export function startAgent(projectId: string) {
 
   log.agent(`启动 Agent (project=${projectId}, model=${project.model}, concurrency=${project.concurrency}, agentTeams=${project.useAgentTeams})`)
 
+  // 判断是否已初始化
+  const sessions = projectService.getSessions(projectId)
+  const hasInitialized = sessions.some((s) => s.type === 'initializer' && s.status === 'completed')
+
   // Agent Teams 模式
   if (project.useAgentTeams) {
     // 如果需要审查且尚未初始化，先跑 initializer 生成 feature list
-    if (project.reviewBeforeCoding) {
-      const sessions = projectService.getSessions(projectId)
-      const hasInitialized = sessions.some((s) => s.type === 'initializer' && s.status === 'completed')
-      if (!hasInitialized) {
-        log.agent(`Agent Teams + 审查模式：先启动 initializer 生成 feature list`)
-        projectService.updateProject(projectId, { status: 'initializing' })
-        broadcast({ type: 'status', projectId, status: 'initializing' })
-        startFeatureWatcher(projectId)
-        startSession(projectId, 'initializer', 0)
-        return
-      }
+    if (project.reviewBeforeCoding && !hasInitialized) {
+      log.agent(`Agent Teams + 审查模式：先启动 initializer 生成 feature list`)
+      applyTransition(projectId, transition(project.status, { type: 'START', hasInitialized: false }))
+      startFeatureWatcher(projectId)
+      startSession(projectId, 'initializer', 0)
+      return
     }
-    projectService.updateProject(projectId, { status: 'running' })
-    broadcast({ type: 'status', projectId, status: 'running' })
+    applyTransition(projectId, transition(project.status, { type: 'START', hasInitialized: true }))
     startFeatureWatcher(projectId)
     startAgentTeamsSession(projectId)
     return
   }
 
-  const sessions = projectService.getSessions(projectId)
-  const hasInitialized = sessions.some((s) => s.type === 'initializer' && s.status === 'completed')
-
   startFeatureWatcher(projectId)
 
   if (!hasInitialized) {
     log.agent(`项目未初始化，启动 initializer session`)
-    projectService.updateProject(projectId, { status: 'initializing' })
-    broadcast({ type: 'status', projectId, status: 'initializing' })
+    applyTransition(projectId, transition(project.status, { type: 'START', hasInitialized: false }))
     startSession(projectId, 'initializer', 0)
     return
   }
 
-  projectService.updateProject(projectId, { status: 'running' })
-  broadcast({ type: 'status', projectId, status: 'running' })
+  applyTransition(projectId, transition(project.status, { type: 'START', hasInitialized: true }))
 
   const concurrency = project.concurrency || 1
 
@@ -1048,8 +1138,7 @@ export function startAgent(projectId: string) {
     log.agent(`并行模式: ${agentCount} 个 Agent, ${features.length} 个待完成 Feature`)
 
     if (agentCount === 0) {
-      projectService.updateProject(projectId, { status: 'completed' })
-      broadcast({ type: 'status', projectId, status: 'completed' })
+      applyTransition(projectId, transition('running', { type: 'SESSION_COMPLETE', allDone: true }))
       return
     }
 
@@ -1078,7 +1167,7 @@ export function stopAgent(projectId: string) {
         } catch {
           // 进程可能已退出
         }
-      }, 5000)
+      }, SIGKILL_DELAY_MS)
     }
   } else {
     // 恢复路径：服务重启后内存中无进程，但项目状态仍为 running
@@ -1097,13 +1186,17 @@ export function stopAgent(projectId: string) {
           endedAt: new Date().toISOString(),
         })
       }
-      projectService.updateProject(projectId, { status: 'paused' })
-      broadcast({ type: 'status', projectId, status: 'paused' })
+      applyTransition(projectId, transition(project.status, { type: 'STOP', allAgentsStopped: true }))
       log.agent(`孤儿进程已清理，项目状态重置为 paused`)
     }
   }
 
   claimedFeatures.delete(projectId)
+  // 清理该项目的重试计数
+  for (const key of featureRetryCount.keys()) {
+    if (key.startsWith(`${projectId}:`)) featureRetryCount.delete(key)
+  }
+  projectService.saveClaimedFeaturesData(projectId, {})
   gitLocks.delete(projectId)
   stopFeatureWatcher(projectId)
 }

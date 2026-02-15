@@ -287,6 +287,87 @@ export function updateFeature(projectId: string, featureId: string, passes: bool
   return feature
 }
 
+// 标记 feature 尝试失败
+export function markFeatureAttempt(projectId: string, featureId: string): void {
+  const project = getProject(projectId)
+  if (!project) return
+
+  const featureListPath = path.join(project.projectDir, 'feature_list.json')
+  if (!fs.existsSync(featureListPath)) return
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(featureListPath, 'utf-8'))
+    const list: Array<Record<string, unknown>> = Array.isArray(raw) ? raw : (raw as Record<string, unknown>).features as Array<Record<string, unknown>> || []
+    const feature = list.find((f) => f.id === featureId)
+    if (feature) {
+      feature.failCount = ((feature.failCount as number) || 0) + 1
+      feature.lastAttemptAt = new Date().toISOString()
+      if (Array.isArray(raw)) {
+        fs.writeFileSync(featureListPath, JSON.stringify(raw, null, 2))
+      } else {
+        (raw as Record<string, unknown>).features = list
+        fs.writeFileSync(featureListPath, JSON.stringify(raw, null, 2))
+      }
+    }
+  } catch {
+    log.warn(`markFeatureAttempt 失败 (${projectId}, ${featureId})`)
+  }
+
+  // 同步到内部 features.json
+  const features = getFeatures(projectId)
+  const f = features.find((feat) => feat.id === featureId)
+  if (f) {
+    f.failCount = (f.failCount || 0) + 1
+    f.lastAttemptAt = new Date().toISOString()
+    setFeatures(projectId, features)
+  }
+}
+
+// 系统级设置 feature inProgress 状态
+export function setFeatureInProgress(projectId: string, featureId: string, inProgress: boolean): void {
+  const project = getProject(projectId)
+  if (!project) return
+
+  const featureListPath = path.join(project.projectDir, 'feature_list.json')
+  if (!fs.existsSync(featureListPath)) return
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(featureListPath, 'utf-8'))
+    const list: Array<Record<string, unknown>> = Array.isArray(raw) ? raw : (raw as Record<string, unknown>).features as Array<Record<string, unknown>> || []
+    const feature = list.find((f) => f.id === featureId)
+    if (feature) {
+      feature.inProgress = inProgress
+      if (Array.isArray(raw)) {
+        fs.writeFileSync(featureListPath, JSON.stringify(raw, null, 2))
+      } else {
+        (raw as Record<string, unknown>).features = list
+        fs.writeFileSync(featureListPath, JSON.stringify(raw, null, 2))
+      }
+    }
+  } catch {
+    log.warn(`setFeatureInProgress 失败 (${projectId}, ${featureId})`)
+  }
+
+  // 同步到内部 features.json
+  const features = getFeatures(projectId)
+  const f = features.find((feat) => feat.id === featureId)
+  if (f) {
+    f.inProgress = inProgress
+    setFeatures(projectId, features)
+  }
+}
+
+// claimedFeatures 持久化
+export function getClaimedFeaturesData(projectId: string): Record<string, number> {
+  const filePath = path.join(getProjectDir(projectId), 'claimed.json')
+  return readJson<Record<string, number>>(filePath, {})
+}
+
+export function saveClaimedFeaturesData(projectId: string, data: Record<string, number>): void {
+  const filePath = path.join(getProjectDir(projectId), 'claimed.json')
+  writeJson(filePath, data)
+}
+
 // 从项目工作目录同步 feature_list.json
 export function syncFeaturesFromDisk(projectId: string): FeatureData[] {
   const project = getProject(projectId)
@@ -306,6 +387,8 @@ export function syncFeaturesFromDisk(projectId: string): FeatureData[] {
       steps: (f.steps as string[]) || [],
       passes: (f.passes as boolean) || false,
       inProgress: (f.inProgress as boolean) || false,
+      ...((f.failCount as number) ? { failCount: f.failCount as number } : {}),
+      ...((f.lastAttemptAt as string) ? { lastAttemptAt: f.lastAttemptAt as string } : {}),
     }))
     const passed = features.filter((f) => f.passes).length
     log.project(`同步 features (${projectId}): ${features.length} 个, ${passed} 通过`)

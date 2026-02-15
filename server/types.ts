@@ -22,6 +22,8 @@ export interface FeatureData {
   steps: string[]
   passes: boolean
   inProgress?: boolean // Agent 正在处理中
+  failCount?: number      // 尝试失败次数
+  lastAttemptAt?: string  // 最后一次尝试时间
 }
 
 export interface SessionData {

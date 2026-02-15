@@ -7,6 +7,8 @@ export interface Feature {
   steps: string[]
   passes: boolean
   inProgress?: boolean
+  failCount?: number
+  lastAttemptAt?: string
 }
 
 export type ProjectStatus = 'idle' | 'initializing' | 'reviewing' | 'running' | 'paused' | 'completed' | 'error'

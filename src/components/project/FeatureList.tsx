@@ -248,6 +248,11 @@ export function FeatureList({ features, featureAgentMap, reviewMode, onReviewSub
                                   {claimedByAgent != null ? `A${claimedByAgent}` : '处理中'}
                                 </Badge>
                               )}
+                              {!feature.passes && feature.failCount && feature.failCount > 0 && (
+                                <span className="text-[10px] text-red-400 shrink-0 font-medium">
+                                  ⚠️ 失败 {feature.failCount} 次
+                                </span>
+                              )}
                             </button>
                             </div>
                             {/* Steps expand */}
