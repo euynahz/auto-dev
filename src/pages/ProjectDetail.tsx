@@ -189,6 +189,7 @@ export default function ProjectDetail() {
 
   const agentIndices = useMemo(() => {
     if (!currentProject) return []
+    if (currentProject.useAgentTeams) return []
     const concurrency = currentProject.concurrency || 1
     if (concurrency <= 1) return []
     return Array.from({ length: concurrency }, (_, i) => i)
@@ -230,7 +231,7 @@ export default function ProjectDetail() {
   const isRunning = project.status === 'running' || project.status === 'initializing'
   const isReviewing = project.status === 'reviewing'
   const agentCount = agentCounts[project.id]
-  const showAgentTabs = (project.concurrency || 1) > 1
+  const showAgentTabs = (project.concurrency || 1) > 1 && !project.useAgentTeams
 
   return (
     <div className="max-w-[1600px] mx-auto overflow-hidden">

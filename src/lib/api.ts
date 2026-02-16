@@ -106,7 +106,11 @@ export const api = {
 
   // Get session raw log
   getSessionRawLog: async (projectId: string, sessionId: string): Promise<string> => {
-    const res = await fetch(`${BASE}/projects/${projectId}/sessions/${sessionId}/raw-log`)
+    const token = new URLSearchParams(window.location.search).get('token')
+    const url = token
+      ? `${BASE}/projects/${projectId}/sessions/${sessionId}/raw-log?token=${encodeURIComponent(token)}`
+      : `${BASE}/projects/${projectId}/sessions/${sessionId}/raw-log`
+    const res = await fetch(url)
     if (!res.ok) {
       if (res.status === 404) throw new Error('LOG_NOT_FOUND')
       throw new Error('Failed to fetch log')

@@ -1357,6 +1357,11 @@ export function stopAgent(projectId: string) {
     if (key.startsWith(`${projectId}:`)) featureRetryCount.delete(key)
   }
   projectService.saveClaimedFeaturesData(projectId, {})
+  // Clear inProgress flags on all features
+  const features = projectService.getFeatures(projectId)
+  for (const f of features) {
+    if (f.inProgress) projectService.setFeatureInProgress(projectId, f.id, false)
+  }
   gitLocks.delete(projectId)
   stopFeatureWatcher(projectId)
 }
