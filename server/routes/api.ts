@@ -73,7 +73,7 @@ router.post('/check-dir', (req, res) => {
 
 // Create project
 router.post('/projects', (req, res) => {
-  const { name, spec, path: dirPath, forceClean, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, verifyCommand, provider, providerSettings } = req.body
+  const { name, spec, path: dirPath, forceClean, model, concurrency, useAgentTeams, systemPrompt, reviewArchitecture, reviewBeforeCoding, verifyCommand, provider, providerSettings } = req.body
   if (!name || !spec) {
     return res.status(400).json({ message: 'Name and spec are required' })
   }
@@ -81,7 +81,7 @@ router.post('/projects', (req, res) => {
   log.api(`POST /projects — creating project: ${name} (path=${dirPath || '(auto)'}, provider=${provider || 'claude'}, model=${model}, concurrency=${concurrency || 1}, agentTeams=${!!useAgentTeams})`)
   const project = projectService.createProject({
     name, spec, model, concurrency, useAgentTeams, systemPrompt,
-    reviewBeforeCoding, verifyCommand, projectDir: dirPath, forceClean, provider, providerSettings,
+    reviewArchitecture, reviewBeforeCoding, verifyCommand, projectDir: dirPath, forceClean, provider, providerSettings,
   })
   res.json({
     ...project,
@@ -93,7 +93,7 @@ router.post('/projects', (req, res) => {
 
 // Import existing project
 router.post('/projects/import', (req, res) => {
-  const { name, path: dirPath, taskPrompt, model, concurrency, useAgentTeams, systemPrompt, reviewBeforeCoding, verifyCommand, provider, providerSettings } = req.body
+  const { name, path: dirPath, taskPrompt, model, concurrency, useAgentTeams, systemPrompt, reviewArchitecture, reviewBeforeCoding, verifyCommand, provider, providerSettings } = req.body
   if (!name || !dirPath) {
     return res.status(400).json({ message: 'Name and directory path are required' })
   }
@@ -102,7 +102,7 @@ router.post('/projects/import', (req, res) => {
   try {
     const project = projectService.importProject({
       name, dirPath, model, concurrency, useAgentTeams, systemPrompt,
-      reviewBeforeCoding, verifyCommand, taskPrompt, provider, providerSettings,
+      reviewArchitecture, reviewBeforeCoding, verifyCommand, taskPrompt, provider, providerSettings,
     })
     res.json({
       ...project,

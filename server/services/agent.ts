@@ -922,15 +922,26 @@ function startSession(projectId: string, type: 'architecture' | 'initializer' | 
       const progress = projectService.getProgress(projectId)
       broadcast({ type: 'progress', projectId, progress })
 
-      // Architecture phase complete → chain to initializer phase
+      // Architecture phase complete → review checkpoint or chain to initializer
       if (type === 'architecture' && !wasStopped) {
-        const archEntry = createLogEntry(sessionId, 'system', 'Architecture analysis complete, starting task decomposition in 3s...', ai)
-        projectService.addLog(projectId, archEntry)
-        broadcast({ type: 'log', projectId, entry: archEntry })
-        setTimeout(() => {
-          const proj = projectService.getProject(projectId)
-          if (proj && proj.status === 'initializing') startSession(projectId, 'initializer', 0)
-        }, SESSION_CHAIN_DELAY_MS)
+        const proj = projectService.getProject(projectId)
+        if (proj?.reviewArchitecture) {
+          // Enter review mode for architecture
+          projectService.updateProject(projectId, { reviewPhase: 'architecture' })
+          applyTransition(projectId, transition('initializing', { type: 'ARCH_COMPLETE', reviewMode: true }))
+          const archEntry = createLogEntry(sessionId, 'system', '📋 Architecture analysis complete. Waiting for review before task decomposition...', ai)
+          projectService.addLog(projectId, archEntry)
+          broadcast({ type: 'log', projectId, entry: archEntry })
+          log.agent(`Architecture review checkpoint — paused for human review (project=${projectId})`)
+        } else {
+          const archEntry = createLogEntry(sessionId, 'system', 'Architecture analysis complete, starting task decomposition in 3s...', ai)
+          projectService.addLog(projectId, archEntry)
+          broadcast({ type: 'log', projectId, entry: archEntry })
+          setTimeout(() => {
+            const p = projectService.getProject(projectId)
+            if (p && p.status === 'initializing') startSession(projectId, 'initializer', 0)
+          }, SESSION_CHAIN_DELAY_MS)
+        }
         return
       }
 
@@ -939,14 +950,18 @@ function startSession(projectId: string, type: 'architecture' | 'initializer' | 
       if (currentStatus === 'initializing') {
         if (progress.total > 0) {
           const latestProject = projectService.getProject(projectId)
+          const reviewMode = latestProject?.reviewBeforeCoding || false
+          if (reviewMode) {
+            projectService.updateProject(projectId, { reviewPhase: 'features' })
+          }
           const result = transition('initializing', {
             type: 'INIT_COMPLETE',
             hasFeatures: true,
-            reviewMode: latestProject?.reviewBeforeCoding || false,
+            reviewMode,
           })
           applyTransition(projectId, result)
           log.agent(result.newStatus === 'reviewing'
-            ? `Initialization complete, entering review mode (${progress.total} features)`
+            ? `Initialization complete, entering feature review mode (${progress.total} features)`
             : `Initialization complete, features generated (${progress.total}), status changed to running`)
         } else if (!wasStopped) {
           applyTransition(projectId, transition('initializing', { type: 'INIT_FAILED' }))
@@ -1458,8 +1473,23 @@ export function confirmReview(projectId: string) {
   if (!project) throw new Error('Project not found')
   if (project.status !== 'reviewing') throw new Error('Project is not in review state')
 
-  log.agent(`Review confirmed, starting coding (project=${projectId})`)
+  const phase = project.reviewPhase || 'features'
 
+  // Architecture review confirmed → chain to initializer
+  if (phase === 'architecture') {
+    log.agent(`Architecture review confirmed, starting task decomposition (project=${projectId})`)
+    projectService.updateProject(projectId, { reviewPhase: undefined })
+    applyTransition(projectId, transition('reviewing', { type: 'REVIEW_CONFIRMED' }))
+    // REVIEW_CONFIRMED transitions to 'running', but we need 'initializing' for the initializer phase
+    projectService.updateProject(projectId, { status: 'initializing' })
+    broadcast({ type: 'status', projectId, status: 'initializing' })
+    startSession(projectId, 'initializer', 0)
+    return
+  }
+
+  // Features review confirmed → start coding
+  log.agent(`Feature review confirmed, starting coding (project=${projectId})`)
+  projectService.updateProject(projectId, { reviewPhase: undefined })
   applyTransition(projectId, transition('reviewing', { type: 'REVIEW_CONFIRMED' }))
   startFeatureWatcher(projectId)
 

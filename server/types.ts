@@ -11,7 +11,9 @@ export interface ProjectData {
   concurrency: number // Concurrent agent count, default 1
   useAgentTeams: boolean // Use Agent Teams mode (internal multi-agent coordination when provider supports it)
   systemPrompt?: string // Project-level system prompt, injected into all agents via --system-prompt
+  reviewArchitecture?: boolean // Pause after architecture analysis for human review before task decomposition
   reviewBeforeCoding?: boolean // Enter review mode after initialization, do not auto-start coding
+  reviewPhase?: 'architecture' | 'features' // Tracks which phase is currently under review
   verifyCommand?: string // Quality gate command (e.g. "npm test && npm run lint") run before marking feature as passed
   createdAt: string
   updatedAt: string

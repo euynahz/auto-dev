@@ -273,7 +273,7 @@ export default function ProjectDetail() {
           {isReviewing && (
             <Button size="sm" onClick={handleConfirmReview} disabled={confirmReviewLoading} className="gap-1.5 h-7 cursor-pointer">
               {confirmReviewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-              Confirm & Start Coding
+              {project.reviewPhase === 'architecture' ? 'Confirm & Decompose Tasks' : 'Confirm & Start Coding'}
             </Button>
           )}
           {isRunning ? (

@@ -68,6 +68,7 @@ export interface CreateProjectOptions {
   concurrency?: number
   useAgentTeams?: boolean
   systemPrompt?: string
+  reviewArchitecture?: boolean
   reviewBeforeCoding?: boolean
   verifyCommand?: string
   projectDir?: string
@@ -83,6 +84,7 @@ export interface ImportProjectOptions {
   concurrency?: number
   useAgentTeams?: boolean
   systemPrompt?: string
+  reviewArchitecture?: boolean
   reviewBeforeCoding?: boolean
   verifyCommand?: string
   taskPrompt?: string
@@ -93,7 +95,7 @@ export interface ImportProjectOptions {
 export function createProject(opts: CreateProjectOptions): ProjectData {
   const {
     name, spec, model = 'claude-opus-4-6', concurrency = 1,
-    useAgentTeams = false, systemPrompt, reviewBeforeCoding, verifyCommand,
+    useAgentTeams = false, systemPrompt, reviewArchitecture, reviewBeforeCoding, verifyCommand,
     projectDir, forceClean, provider = 'claude', providerSettings,
   } = opts
   const id = uuidv4()
@@ -127,6 +129,7 @@ export function createProject(opts: CreateProjectOptions): ProjectData {
     concurrency: Math.max(1, Math.min(8, concurrency)),
     useAgentTeams,
     ...(systemPrompt ? { systemPrompt } : {}),
+    ...(reviewArchitecture ? { reviewArchitecture } : {}),
     ...(reviewBeforeCoding ? { reviewBeforeCoding } : {}),
     ...(verifyCommand ? { verifyCommand } : {}),
     createdAt: now,
@@ -150,7 +153,7 @@ export function createProject(opts: CreateProjectOptions): ProjectData {
 export function importProject(opts: ImportProjectOptions): ProjectData {
   const {
     name, dirPath, model = 'claude-opus-4-6', concurrency = 1,
-    useAgentTeams = false, systemPrompt, reviewBeforeCoding, verifyCommand,
+    useAgentTeams = false, systemPrompt, reviewArchitecture, reviewBeforeCoding, verifyCommand,
     taskPrompt, provider = 'claude', providerSettings,
   } = opts
   if (!isPathSafe(dirPath)) throw new Error('Path is not within allowed range')
@@ -223,6 +226,7 @@ export function importProject(opts: ImportProjectOptions): ProjectData {
     concurrency: Math.max(1, Math.min(8, concurrency)),
     useAgentTeams,
     ...(systemPrompt ? { systemPrompt } : {}),
+    ...(reviewArchitecture ? { reviewArchitecture } : {}),
     ...(reviewBeforeCoding ? { reviewBeforeCoding } : {}),
     ...(verifyCommand ? { verifyCommand } : {}),
     createdAt: now,

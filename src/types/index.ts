@@ -24,7 +24,9 @@ export interface Project {
   concurrency: number
   useAgentTeams: boolean
   systemPrompt?: string
+  reviewArchitecture?: boolean
   reviewBeforeCoding?: boolean
+  reviewPhase?: 'architecture' | 'features'
   createdAt: string
   updatedAt: string
   features: Feature[]
@@ -120,6 +122,7 @@ export interface CreateProjectRequest {
   concurrency?: number
   useAgentTeams?: boolean
   systemPrompt?: string
+  reviewArchitecture?: boolean
   reviewBeforeCoding?: boolean
 }
 
@@ -133,6 +136,7 @@ export interface ImportProjectRequest {
   concurrency?: number
   useAgentTeams?: boolean
   systemPrompt?: string
+  reviewArchitecture?: boolean
   reviewBeforeCoding?: boolean
 }
 

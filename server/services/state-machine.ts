@@ -5,6 +5,7 @@ export type ProjectStatus = ProjectData['status']
 // State transition events
 export type StateEvent =
   | { type: 'START'; hasInitialized: boolean }
+  | { type: 'ARCH_COMPLETE'; reviewMode: boolean }
   | { type: 'INIT_COMPLETE'; hasFeatures: boolean; reviewMode: boolean }
   | { type: 'INIT_FAILED' }
   | { type: 'REVIEW_CONFIRMED' }
@@ -27,6 +28,14 @@ export function transition(current: ProjectStatus, event: StateEvent): Transitio
     case 'START':
       if (current === 'idle' || current === 'paused' || current === 'completed' || current === 'error') {
         return { newStatus: event.hasInitialized ? 'running' : 'initializing' }
+      }
+      return { newStatus: null }
+
+    case 'ARCH_COMPLETE':
+      if (current === 'initializing') {
+        if (event.reviewMode) {
+          return { newStatus: 'reviewing' }
+        }
       }
       return { newStatus: null }
 

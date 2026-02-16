@@ -36,6 +36,7 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
   const [providerSettings, setProviderSettings] = useState<Record<string, unknown>>({})
   const [concurrency, setConcurrency] = useState(1)
   const [useAgentTeams, setUseAgentTeams] = useState(false)
+  const [reviewArchitecture, setReviewArchitecture] = useState(false)
   const [reviewBeforeCoding, setReviewBeforeCoding] = useState(false)
   const [verifyCommand, setVerifyCommand] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
@@ -89,6 +90,7 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
         ...(hasCustomSettings ? { providerSettings } : {}),
         concurrency, useAgentTeams,
         systemPrompt: systemPrompt.trim() || undefined,
+        reviewArchitecture: reviewArchitecture || undefined,
         reviewBeforeCoding: reviewBeforeCoding || undefined,
         verifyCommand: verifyCommand.trim() || undefined,
       })
@@ -141,6 +143,12 @@ export function ImportProjectDialog({ open, onOpenChange }: Props) {
               <label className="text-sm font-medium">Project Name</label>
               <Input placeholder="Auto-extracted from path" value={name} onChange={(e) => handleNameChange(e.target.value)} />
             </div>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={reviewArchitecture} onChange={(e) => setReviewArchitecture(e.target.checked)} className="accent-primary" />
+              <span className="text-sm font-medium">Review architecture</span>
+              <span className="text-xs text-muted-foreground">— Pause after analysis for review</span>
+            </label>
 
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={reviewBeforeCoding} onChange={(e) => setReviewBeforeCoding(e.target.checked)} className="accent-primary" />
