@@ -141,6 +141,10 @@ export const useStore = create<AppState>((set, get) => ({
       case 'human_help':
         addHelpRequest(msg.projectId, msg.request)
         break
+      case 'feature_proposal':
+        // Feature data is already synced via features_sync broadcast; log for visibility
+        console.log(`[WS] Feature proposed by Agent ${msg.proposal.agentIndex}: ${msg.proposal.feature.description}`)
+        break
       case 'features_sync':
         set((state) => {
           const features = msg.features

@@ -79,6 +79,21 @@ export interface HelpRequest {
   resolvedAt?: string
 }
 
+export interface FeatureProposal {
+  id: string
+  projectId: string
+  sessionId: string
+  agentIndex: number
+  feature: {
+    description: string
+    reason: string
+    steps: string[]
+  }
+  status: 'accepted' | 'pending'
+  createdAt: string
+  sourceFeatureId?: string
+}
+
 // ===== WebSocket Message Types =====
 
 export type WSMessage =
@@ -90,6 +105,7 @@ export type WSMessage =
   | { type: 'session_update'; projectId: string; session: Session }
   | { type: 'agent_count'; projectId: string; active: number; total: number }
   | { type: 'human_help'; projectId: string; request: HelpRequest }
+  | { type: 'feature_proposal'; projectId: string; proposal: FeatureProposal }
 
 // ===== API Request Types =====
 
