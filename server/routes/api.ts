@@ -300,4 +300,52 @@ router.post('/projects/:id/confirm-review', (req, res) => {
   }
 })
 
+// PATCH project settings (model, wallTimeoutMin, etc.)
+router.patch('/projects/:id', (req, res) => {
+  const project = projectService.getProject(req.params.id)
+  if (!project) return res.status(404).json({ message: 'Project not found' })
+
+  const allowedFields = ['model', 'wallTimeoutMin', 'concurrency', 'verifyCommand'] as const
+  const patch: Record<string, unknown> = {}
+  for (const key of allowedFields) {
+    if (req.body[key] !== undefined) patch[key] = req.body[key]
+  }
+  if (Object.keys(patch).length === 0) {
+    return res.status(400).json({ message: 'No valid fields to update' })
+  }
+
+  log.api(`PATCH /projects/${req.params.id} — ${JSON.stringify(patch)}`)
+  const updated = projectService.updateProject(req.params.id, patch)
+  if (!updated) return res.status(500).json({ message: 'Update failed' })
+
+  res.json({
+    ...updated,
+    features: projectService.getFeatures(updated.id),
+    sessions: projectService.getSessions(updated.id),
+    progress: projectService.getProgress(updated.id),
+  })
+})
+
+// Read a file from project directory (for architecture review, etc.)
+router.get('/projects/:id/file', (req, res) => {
+  const project = projectService.getProject(req.params.id)
+  if (!project) return res.status(404).json({ message: 'Project not found' })
+
+  const filePath = req.query.path as string
+  if (!filePath) return res.status(400).json({ message: 'path query param required' })
+
+  // Security: only allow reading within project directory, block path traversal
+  const resolved = path.resolve(project.projectDir, filePath)
+  if (!resolved.startsWith(path.resolve(project.projectDir))) {
+    return res.status(403).json({ message: 'Access denied: path traversal' })
+  }
+
+  try {
+    const content = fs.readFileSync(resolved, 'utf-8')
+    res.json({ path: filePath, content })
+  } catch {
+    res.status(404).json({ message: 'File not found' })
+  }
+})
+
 export default router

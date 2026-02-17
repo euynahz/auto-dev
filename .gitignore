@@ -26,3 +26,4 @@ dist-ssr
 .autodev-data/
 package-lock.json
 workspace/
+test-projects/

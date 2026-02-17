@@ -87,7 +87,7 @@ app.get('/{*path}', (_req, res) => {
 })
 
 // Start server
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 4173
 server.listen(PORT, () => {
   const url = `http://localhost:${PORT}`
   log.server(`AutoDev Server running at ${url}`)

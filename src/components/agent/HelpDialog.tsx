@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { MessageCircleWarning, Send, Loader2 } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { MessageCircleWarning, Send, Loader2, FileText, Terminal } from 'lucide-react'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import { useStore } from '@/store'
 import type { HelpRequest } from '@/types'
@@ -11,7 +12,6 @@ interface Props {
   projectName: string
 }
 
-// Send browser desktop notification
 function sendDesktopNotification(title: string, body: string) {
   if (!('Notification' in window)) return
   if (Notification.permission === 'granted') {
@@ -33,17 +33,14 @@ export function HelpDialog({ projectId, projectName }: Props) {
   const [notifiedIds, setNotifiedIds] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(true)
 
-  // Current pending request (first one)
   const current: HelpRequest | undefined = helpRequests[0]
 
-  // Request notification permission (on page load)
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
   }, [])
 
-  // Send desktop notification & auto-open when new request arrives
   useEffect(() => {
     if (!current || notifiedIds.has(current.id)) return
     sendDesktopNotification(
@@ -77,7 +74,7 @@ export function HelpDialog({ projectId, projectName }: Props) {
 
   if (!current) return null
 
-  // Show floating badge when dialog is closed
+  // Floating badge when sheet is closed
   if (!open) {
     return (
       <button
@@ -91,53 +88,91 @@ export function HelpDialog({ projectId, projectName }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[540px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetContent className="flex flex-col">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
             <MessageCircleWarning className="h-5 w-5 text-amber-400" />
             Agent Requests Assistance
-          </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Agent {current.agentIndex} &middot; {new Date(current.createdAt).toLocaleTimeString('en-US')}
+          </SheetTitle>
+          <SheetDescription className="text-xs text-muted-foreground">
+            Agent {current.agentIndex} · {new Date(current.createdAt).toLocaleTimeString('en-US')}
             {helpRequests.length > 1 && (
               <span className="ml-2 text-amber-400">{helpRequests.length - 1} more pending</span>
             )}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
-        {/* Agent's question */}
-        <div className="bg-secondary/50 rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-y-auto">
-          {current.message}
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-5 py-3">
+          {/* Feature context */}
+          {(current.featureId || current.featureDescription) && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <FileText className="h-3 w-3" />
+                Current Feature
+              </div>
+              <div className="bg-secondary/50 rounded-lg p-3 text-sm">
+                {current.featureId && (
+                  <Badge variant="secondary" className="text-[10px] mr-2">{current.featureId}</Badge>
+                )}
+                {current.featureDescription || 'Unknown feature'}
+              </div>
+            </div>
+          )}
+
+          {/* Agent's question */}
+          <div className="space-y-1">
+            <div className="text-xs font-medium text-muted-foreground">Agent's Question</div>
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-y-auto">
+              {current.message}
+            </div>
+          </div>
+
+          {/* Recent logs context */}
+          {current.recentLogs && current.recentLogs.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Terminal className="h-3 w-3" />
+                Recent Activity ({current.recentLogs.length} entries)
+              </div>
+              <div className="bg-secondary/30 rounded-lg p-3 space-y-1 max-h-[160px] overflow-y-auto">
+                {current.recentLogs.map((log, i) => (
+                  <div key={i} className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                    {log}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* User response input */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Your Response</label>
+            <textarea
+              value={response}
+              onChange={(e) => setResponse(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Enter hints or guidance..."
+              className="w-full min-h-[100px] rounded-lg border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-colors"
+              autoFocus
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Response will be written to .human-response.md. Press Ctrl+Enter to submit.
+            </p>
+          </div>
         </div>
 
-        {/* User response input */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Your Response</label>
-          <textarea
-            value={response}
-            onChange={(e) => setResponse(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Enter hints or guidance..."
-            className="w-full min-h-[100px] rounded-lg border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-colors"
-            autoFocus
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Your response will be written to .human-response.md in the project directory. The Agent can read it in subsequent operations. Press Ctrl+Enter to submit.
-          </p>
-        </div>
-
-        <DialogFooter>
+        <div className="px-5 py-3 border-t">
           <Button
             onClick={handleSubmit}
             disabled={submitting || !response.trim()}
-            className="gap-2 cursor-pointer"
+            className="w-full gap-2 cursor-pointer"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Submit Response
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

@@ -179,20 +179,28 @@ export const useStore = create<AppState>((set, get) => ({
           }
         })
         break
-      case 'session_update':
+      case 'session_update': {
+        // Ensure session has logs array (server SessionData omits it)
+        const incomingSession = { logs: [] as LogEntry[], ...msg.session }
         set((state) => {
-          const project = state.projects.find((p) => p.id === msg.projectId)
-          if (!project) return state
-          const sessions = project.sessions.some((s) => s.id === msg.session.id)
-            ? project.sessions.map((s) => (s.id === msg.session.id ? msg.session : s))
-            : [...project.sessions, msg.session]
-          const updates = { sessions }
-          return {
-            projects: state.projects.map((p) => (p.id === msg.projectId ? { ...p, ...updates } : p)),
-            currentProject: state.currentProject?.id === msg.projectId ? { ...state.currentProject, ...updates } : state.currentProject,
-          }
+          // Update both projects array and currentProject
+          const updateSessions = (sessions: Session[]) =>
+            sessions.some((s) => s.id === incomingSession.id)
+              ? sessions.map((s) => (s.id === incomingSession.id ? { ...s, ...incomingSession } : s))
+              : [...sessions, incomingSession]
+
+          const projects = state.projects.map((p) =>
+            p.id === msg.projectId ? { ...p, sessions: updateSessions(p.sessions) } : p
+          )
+          const currentProject =
+            state.currentProject?.id === msg.projectId
+              ? { ...state.currentProject, sessions: updateSessions(state.currentProject.sessions) }
+              : state.currentProject
+
+          return { projects, currentProject }
         })
         break
+      }
     }
   },
 }))

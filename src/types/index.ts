@@ -27,6 +27,8 @@ export interface Project {
   reviewArchitecture?: boolean
   reviewBeforeCoding?: boolean
   reviewPhase?: 'architecture' | 'features'
+  verifyCommand?: string
+  wallTimeoutMin?: number
   createdAt: string
   updatedAt: string
   features: Feature[]
@@ -79,6 +81,9 @@ export interface HelpRequest {
   response?: string
   createdAt: string
   resolvedAt?: string
+  featureId?: string
+  featureDescription?: string
+  recentLogs?: string[]
 }
 
 export interface FeatureProposal {

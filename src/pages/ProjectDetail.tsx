@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, memo } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Square, Loader2, Users, Zap, Info, Maximize2, Minimize2, Plus } from 'lucide-react'
+import { ArrowLeft, Square, Loader2, Users, Zap, Info, Maximize2, Minimize2, Plus, FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -88,7 +88,7 @@ export default function ProjectDetail() {
   const [actionLoading, setActionLoading] = useState(false)
   const [activeAgentTab, setActiveAgentTab] = useState('all')
   const [infoOpen, setInfoOpen] = useState(false)
-  const [fullPanel, setFullPanel] = useState<'features' | 'logs' | 'sessions' | null>(null)
+  const [fullPanel, setFullPanel] = useState<'features' | 'logs' | 'sessions' | 'review' | null>(null)
   const [appendOpen, setAppendOpen] = useState(false)
   const [appendSpec, setAppendSpec] = useState('')
   const [appendLoading, setAppendLoading] = useState(false)
@@ -97,6 +97,10 @@ export default function ProjectDetail() {
   const [systemPromptSaved, setSystemPromptSaved] = useState(false)
   const [reviewLoading, setReviewLoading] = useState(false)
   const [confirmReviewLoading, setConfirmReviewLoading] = useState(false)
+  const [reviewFileContent, setReviewFileContent] = useState<string | null>(null)
+  const [reviewFileLoading, setReviewFileLoading] = useState(false)
+  const [editingModel, setEditingModel] = useState('')
+  const [modelSaving, setModelSaving] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -187,6 +191,34 @@ export default function ProjectDetail() {
     }
   }
 
+  // Load architecture.md or feature_list.json when entering review state
+  useEffect(() => {
+    if (!id || !currentProject) return
+    if (currentProject.status !== 'reviewing') {
+      setReviewFileContent(null)
+      return
+    }
+    const filePath = currentProject.reviewPhase === 'architecture' ? 'architecture.md' : 'feature_list.json'
+    setReviewFileLoading(true)
+    api.getProjectFile(id, filePath)
+      .then((data) => setReviewFileContent(data.content))
+      .catch(() => setReviewFileContent(null))
+      .finally(() => setReviewFileLoading(false))
+  }, [id, currentProject?.status, currentProject?.reviewPhase])
+
+  const handleSaveModel = async () => {
+    if (!id || !editingModel.trim()) return
+    setModelSaving(true)
+    try {
+      const updated = await api.patchProject(id, { model: editingModel.trim() })
+      setCurrentProject(updated)
+    } catch (err) {
+      console.error('Save model failed:', err)
+    } finally {
+      setModelSaving(false)
+    }
+  }
+
   const agentIndices = useMemo(() => {
     if (!currentProject) return []
     if (currentProject.useAgentTeams) return []
@@ -271,10 +303,18 @@ export default function ProjectDetail() {
             Append Spec
           </Button>
           {isReviewing && (
-            <Button size="sm" onClick={handleConfirmReview} disabled={confirmReviewLoading} className="gap-1.5 h-7 cursor-pointer">
-              {confirmReviewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-              {project.reviewPhase === 'architecture' ? 'Confirm & Decompose Tasks' : 'Confirm & Start Coding'}
-            </Button>
+            <>
+              {reviewFileContent !== null && (
+                <Button variant="outline" size="sm" onClick={() => setFullPanel(fullPanel === 'review' ? null : 'review' as any)} className="gap-1.5 h-7 cursor-pointer">
+                  <FileText className="h-3.5 w-3.5" />
+                  {project.reviewPhase === 'architecture' ? 'View Architecture' : 'View Features'}
+                </Button>
+              )}
+              <Button size="sm" onClick={handleConfirmReview} disabled={confirmReviewLoading} className="gap-1.5 h-7 cursor-pointer">
+                {confirmReviewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                {project.reviewPhase === 'architecture' ? 'Confirm & Decompose Tasks' : 'Confirm & Start Coding'}
+              </Button>
+            </>
           )}
           {isRunning ? (
             <Button variant="destructive" size="sm" onClick={handleStop} disabled={actionLoading} className="gap-1.5 h-7 cursor-pointer">
@@ -301,7 +341,48 @@ export default function ProjectDetail() {
             <div className="prose dark:prose-invert prose-sm max-w-4xl mx-auto [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1.5 [&_p]:text-sm [&_p]:text-muted-foreground [&_p]:mb-2 [&_p]:leading-relaxed [&_ul]:text-sm [&_ul]:text-muted-foreground [&_ul]:mb-2 [&_ul]:pl-4 [&_ol]:text-sm [&_ol]:text-muted-foreground [&_ol]:mb-2 [&_ol]:pl-4 [&_li]:mb-1 [&_code]:text-xs [&_code]:bg-secondary/50 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_pre]:bg-secondary/30 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:overflow-x-auto [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted-foreground">
               <ReactMarkdown>{project.spec}</ReactMarkdown>
             </div>
-            <div className="max-w-4xl mx-auto mt-6 border-t pt-4 space-y-2">
+            <div className="max-w-4xl mx-auto mt-6 border-t pt-4 space-y-4">
+              {/* Model & Timeout settings */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Model</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={editingModel}
+                      onChange={(e) => setEditingModel(e.target.value)}
+                      placeholder={project.model || 'default'}
+                      className="flex-1 h-8 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <Button size="sm" onClick={handleSaveModel} disabled={modelSaving || !editingModel.trim()} className="h-8 cursor-pointer">
+                      {modelSaving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                      Save
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Takes effect on next session</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Wall Timeout (min)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={5}
+                      max={180}
+                      defaultValue={project.wallTimeoutMin || 30}
+                      onBlur={async (e) => {
+                        const val = parseInt(e.target.value)
+                        if (!id || isNaN(val) || val < 5) return
+                        const updated = await api.patchProject(id, { wallTimeoutMin: val })
+                        setCurrentProject(updated)
+                      }}
+                      className="w-24 h-8 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="text-xs text-muted-foreground self-center">Auto-kill session after N min without output</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
               <label className="text-sm font-medium">System Prompt</label>
               <Textarea
                 placeholder="Additional instructions for all Agents, e.g. coding standards, tech stack preferences..."
@@ -317,6 +398,7 @@ export default function ProjectDetail() {
                 </Button>
                 {systemPromptSaved && <span className="text-xs text-green-500">Saved. Changes will take effect in the next session.</span>}
                 <p className="text-xs text-muted-foreground ml-auto">Injected via --system-prompt to all Agents</p>
+              </div>
               </div>
             </div>
           </div>
@@ -345,6 +427,28 @@ export default function ProjectDetail() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Architecture/Feature review preview panel */}
+      {fullPanel === 'review' && reviewFileContent !== null && (
+        <Card className="mb-3 p-4 animate-fade-in" style={{ height: 'calc(100vh - 152px)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium">
+              {currentProject?.reviewPhase === 'architecture' ? '📐 Architecture Review' : '📋 Feature Review'}
+            </span>
+            <button
+              onClick={() => setFullPanel(null)}
+              className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/50 cursor-pointer"
+            >
+              <Minimize2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="h-[calc(100%-2rem)] overflow-y-auto">
+            <div className="prose dark:prose-invert prose-sm max-w-none [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1.5 [&_p]:text-sm [&_p]:text-muted-foreground [&_p]:mb-2 [&_p]:leading-relaxed [&_ul]:text-sm [&_ul]:text-muted-foreground [&_ul]:mb-2 [&_ul]:pl-4 [&_ol]:text-sm [&_ol]:text-muted-foreground [&_ol]:mb-2 [&_ol]:pl-4 [&_li]:mb-1 [&_code]:text-xs [&_code]:bg-secondary/50 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_pre]:bg-secondary/30 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:overflow-x-auto">
+              <ReactMarkdown>{reviewFileContent}</ReactMarkdown>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Main content: left-right split */}
       <div className={cn('gap-4', fullPanel ? '' : 'grid grid-cols-1 lg:grid-cols-[380px_1fr]')} style={{ height: 'calc(100vh - 152px)' }}>

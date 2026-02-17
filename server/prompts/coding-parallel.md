@@ -65,6 +65,15 @@ git add -A
 git commit -m "feat: {{FEATURE_DESCRIPTION}}"
 ```
 
+## Environment Safety
+
+⚠️ **CRITICAL**: The AutoDev orchestration server is running on port **{{AUTODEV_PORT}}**. You MUST NOT:
+- Kill processes on port {{AUTODEV_PORT}} (e.g. `lsof -ti:{{AUTODEV_PORT}} | xargs kill`)
+- Start any server on port {{AUTODEV_PORT}}
+- Run `kill -9` on PIDs you don't own
+
+If you need to test a server, use a different port (e.g. 5000, 8080, 9000). If a port is in use, pick another one — never blindly kill the process occupying it.
+
 ## Important Rules
 
 1. **Do not switch branches** — you must always work on the `{{BRANCH_NAME}}` branch

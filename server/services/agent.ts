@@ -39,7 +39,7 @@ const SIGKILL_DELAY_MS = 5000        // Delay before sending SIGKILL after SIGTE
 const SESSION_CHAIN_DELAY_MS = 3000  // Delay before starting next session after one ends
 const SESSION_RETRY_DELAY_MS = 5000  // Retry delay after failure
 const MAX_RETRY_PER_FEATURE = 3      // Max retries per feature
-const SESSION_WALL_TIMEOUT_MS = 30 * 60 * 1000  // 30-minute wall clock timeout
+const DEFAULT_WALL_TIMEOUT_MIN = 30  // Default wall clock timeout in minutes
 
 // Create session log file, return write stream
 function createLogFile(sessionId: string): { filePath: string; stream: fs.WriteStream } {
@@ -220,9 +220,16 @@ function injectVerifyCommand(template: string, verifyCommand?: string): string {
   return template
 }
 
+// Inject AUTODEV_PORT into prompt templates
+function injectAutodevPort(template: string): string {
+  const port = process.env.PORT || '4173'
+  return template.replace(/\{\{AUTODEV_PORT\}\}/g, port)
+}
+
 // Build coding prompt (serial mode)
 function buildCodingPrompt(project?: ReturnType<typeof projectService.getProject>): string {
   let template = loadPrompt('coding')
+  template = injectAutodevPort(template)
   return injectVerifyCommand(template, project?.verifyCommand)
 }
 
@@ -247,6 +254,7 @@ function buildAgentTeamsPrompt(project: ReturnType<typeof projectService.getProj
 // Build coding-parallel prompt (parallel mode)
 function buildParallelCodingPrompt(agentIndex: number, branch: string, feature: { id: string; description: string; steps: string[] }, verifyCommand?: string): string {
   let template = loadPrompt('coding-parallel')
+  template = injectAutodevPort(template)
   template = template.replace('{{AGENT_INDEX}}', String(agentIndex))
   template = template.replace('{{BRANCH_NAME}}', branch)
   template = template.replace('{{FEATURE_ID}}', feature.id)
@@ -783,14 +791,16 @@ function spawnAgentSession(config: SpawnSessionConfig): void {
     }
   }, 15000) : null
 
-  // Wall clock timeout: auto-kill after 30 min without stdout output
+  // Wall clock timeout: auto-kill after N min without stdout output (configurable per project)
+  const wallTimeoutMs = (project.wallTimeoutMin || DEFAULT_WALL_TIMEOUT_MIN) * 60 * 1000
+  const wallTimeoutLabel = `${(project.wallTimeoutMin || DEFAULT_WALL_TIMEOUT_MIN)}min`
   let wallTimer: ReturnType<typeof setTimeout> | null = null
   function resetWallTimer() {
     if (wallTimer) clearTimeout(wallTimer)
     wallTimer = setTimeout(() => {
-      log.agent(`⏰ Session wall clock timeout (${SESSION_WALL_TIMEOUT_MS / 60000}min no output), auto-terminating (agent=${agentIndex})`)
+      log.agent(`⏰ Session wall clock timeout (${wallTimeoutLabel} no output), auto-terminating (agent=${agentIndex})`)
       const entry = createLogEntry(sessionId, 'error',
-        `⏰ Wall clock timeout: ${SESSION_WALL_TIMEOUT_MS / 60000} min no output, auto-terminated`, agentIndex)
+        `⏰ Wall clock timeout: ${wallTimeoutLabel} no output, auto-terminated`, agentIndex)
       projectService.addLog(projectId, entry)
       broadcast({ type: 'log', projectId, entry })
       const agent = runningAgents.get(projectId)?.get(agentIndex)
@@ -801,7 +811,7 @@ function spawnAgentSession(config: SpawnSessionConfig): void {
           try { agent.process.kill('SIGKILL') } catch { /* already dead */ }
         }, SIGKILL_DELAY_MS)
       }
-    }, SESSION_WALL_TIMEOUT_MS)
+    }, wallTimeoutMs)
   }
   resetWallTimer()
 
@@ -1167,35 +1177,34 @@ function startParallelSession(projectId: string, agentIndex: number) {
   })
 }
 
-// Start Agent Teams session (internal multi-agent coordination when provider supports it)
+// Start Agent Teams session — uses multi-process parallel infrastructure
+// (Claude's internal TeamCreate/TaskCreate tools are unreliable in CLI mode,
+//  so we spawn real OS-level parallel agents instead)
 function startAgentTeamsSession(projectId: string) {
   const project = projectService.getProject(projectId)
   if (!project) return
 
-  spawnAgentSession({
-    projectId, project,
-    sessionType: 'agent-teams',
-    agentIndex: 0,
-    prompt: buildAgentTeamsPrompt(project),
-    maxTurns: 500,
-    startMessage: '🚀 Starting Agent Teams mode — AI will autonomously coordinate multiple sub-agents for full development',
-    heartbeat: true,
-    heartbeatMessage: 'Agent Teams initializing, please wait...',
-    onClose({ wasStopped }) {
-      projectService.syncFeaturesFromDisk(projectId)
-      const progress = projectService.getProgress(projectId)
-      broadcast({ type: 'progress', projectId, progress })
+  const features = getUnfinishedFeatures(projectId)
+  const concurrency = project.concurrency || 1
+  const agentCount = Math.min(concurrency, features.length)
 
-      const currentStatus = projectService.getProject(projectId)?.status || 'running'
-      if (progress.total > 0 && progress.passed >= progress.total) {
-        applyTransition(projectId, transition(currentStatus, { type: 'SESSION_COMPLETE', allDone: true }))
-      } else if (wasStopped) {
-        applyTransition(projectId, transition(currentStatus, { type: 'STOP', allAgentsStopped: true }))
-      } else {
-        applyTransition(projectId, transition(currentStatus, { type: 'ERROR' }))
-      }
-    },
-  })
+  if (agentCount === 0) {
+    log.agent(`Agent Teams: No unfinished features`)
+    applyTransition(projectId, transition('running', { type: 'SESSION_COMPLETE', allDone: true }))
+    return
+  }
+
+  log.agent(`Agent Teams: Launching ${agentCount} parallel agents for ${features.length} features`)
+  const sysEntry = createLogEntry('', 'system',
+    `🚀 Agent Teams: Launching ${agentCount} parallel agents (${features.length} features remaining)`)
+  projectService.addLog(projectId, sysEntry)
+  broadcast({ type: 'log', projectId, entry: sysEntry })
+
+  for (let i = 0; i < agentCount; i++) {
+    setTimeout(() => {
+      startParallelSession(projectId, i)
+    }, i * 2000)
+  }
 }
 
 // ===== Public API =====

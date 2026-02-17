@@ -15,6 +15,7 @@ export interface ProjectData {
   reviewBeforeCoding?: boolean // Enter review mode after initialization, do not auto-start coding
   reviewPhase?: 'architecture' | 'features' // Tracks which phase is currently under review
   verifyCommand?: string // Quality gate command (e.g. "npm test && npm run lint") run before marking feature as passed
+  wallTimeoutMin?: number // Wall clock timeout per session in minutes (default 30)
   createdAt: string
   updatedAt: string
   projectDir: string // Project path on disk

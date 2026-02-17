@@ -104,6 +104,17 @@ export const api = {
       method: 'POST',
     }),
 
+  // Patch project settings (model, wallTimeoutMin, etc.)
+  patchProject: (id: string, patch: Record<string, unknown>) =>
+    request<Project>(`/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+
+  // Read file from project directory
+  getProjectFile: (id: string, filePath: string) =>
+    request<{ path: string; content: string }>(`/projects/${id}/file?path=${encodeURIComponent(filePath)}`),
+
   // Get session raw log
   getSessionRawLog: async (projectId: string, sessionId: string): Promise<string> => {
     const token = new URLSearchParams(window.location.search).get('token')
