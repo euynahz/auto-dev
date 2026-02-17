@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { FeatureList } from '@/components/project/FeatureList'
+import { PipelineFlow } from '@/components/project/PipelineFlow'
 import { AgentLog } from '@/components/agent/AgentLog'
 import { SessionTimeline } from '@/components/agent/SessionTimeline'
 import { HelpDialog } from '@/components/agent/HelpDialog'
@@ -427,6 +428,11 @@ export default function ProjectDetail() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Pipeline visualization */}
+      <div className="mb-3 animate-fade-in">
+        <PipelineFlow project={project} />
+      </div>
 
       {/* Architecture/Feature review preview panel */}
       {fullPanel === 'review' && reviewFileContent !== null && (
