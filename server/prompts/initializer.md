@@ -40,6 +40,7 @@ Rules:
 - steps should list concrete implementation steps
 - passes should always be initialized to false
 - Features should be ordered with reasonable dependencies (foundational features first, advanced features later)
+- **Every feature MUST have a verifiable completion criterion** — avoid vague descriptions like "Add comprehensive error handling" or "Improve overall quality". Instead, be specific: "Add input validation for CLI arguments: missing args show usage, invalid format returns exit code 1". If a feature can't be objectively verified as done, it will cause the coding agent to loop indefinitely
 
 **⚠️ Write Method (must follow strictly):**
 feature_list.json can be large. **Do NOT write the entire file in a single operation** (whether using Write or Bash, a single tool call with overly long parameters may cause content loss). You must write in batches:
