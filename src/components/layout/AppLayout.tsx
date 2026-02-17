@@ -3,6 +3,7 @@ import { LayoutDashboard, Wifi, WifiOff, Sun, Moon } from 'lucide-react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
 import { useEffect, useState } from 'react'
+import { PipelineFlow } from '@/components/project/PipelineFlow'
 
 function useTheme() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
@@ -25,7 +26,9 @@ function useTheme() {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const wsConnected = useStore((s) => s.wsConnected)
+  const currentProject = useStore((s) => s.currentProject)
   const { dark, toggle } = useTheme()
+  const isProjectPage = location.pathname.startsWith('/project/')
 
   return (
     <div className="min-h-screen bg-background dot-grid-bg">
@@ -55,6 +58,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               Dashboard
             </Link>
           </nav>
+
+          {/* Pipeline flow — inline on project pages */}
+          {isProjectPage && currentProject && (
+            <div className="flex-1 flex justify-center">
+              <PipelineFlow project={currentProject} compact />
+            </div>
+          )}
 
           <div className="ml-auto flex items-center gap-3">
             <button

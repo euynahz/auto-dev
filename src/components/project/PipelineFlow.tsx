@@ -222,16 +222,65 @@ function buildEdges(stages: Record<string, StageData>): Edge[] {
   })
 }
 
+// ── Compact inline pipeline for navbar ────────────────────────────
+
+const compactStatusColors: Record<StageStatus, { dot: string; text: string; line: string }> = {
+  pending:   { dot: 'bg-muted-foreground/30', text: 'text-muted-foreground/50', line: 'bg-border/40' },
+  active:    { dot: 'bg-primary',             text: 'text-primary',             line: 'bg-primary/40' },
+  completed: { dot: 'bg-emerald-500',         text: 'text-emerald-400',         line: 'bg-emerald-500/50' },
+  error:     { dot: 'bg-destructive',         text: 'text-destructive',         line: 'bg-destructive/40' },
+  paused:    { dot: 'bg-amber-500',           text: 'text-amber-400',           line: 'bg-amber-500/40' },
+  review:    { dot: 'bg-violet-500',          text: 'text-violet-400',          line: 'bg-violet-500/40' },
+}
+
+function CompactPipeline({ stages }: { stages: Record<string, StageData> }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {STAGE_IDS.map((id, i) => {
+        const stage = stages[id]
+        const c = compactStatusColors[stage.status]
+        const isActive = stage.status === 'active' || stage.status === 'review'
+        const isLast = i === STAGE_IDS.length - 1
+
+        return (
+          <div key={id} className="flex items-center">
+            {/* Stage pill */}
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md ${c.text} transition-all duration-300`} title={stage.subtitle ? `${stage.label}: ${stage.subtitle}` : stage.label}>
+              <div className="relative shrink-0">
+                {isActive && (
+                  <span className="absolute inset-0 rounded-full animate-ping opacity-40" style={{ backgroundColor: 'currentColor' }} />
+                )}
+                <div className={`h-1.5 w-1.5 rounded-full ${c.dot} transition-colors duration-300`} />
+              </div>
+              <span className="text-[10px] font-medium leading-none whitespace-nowrap">{stage.label}</span>
+            </div>
+            {/* Connector line */}
+            {!isLast && (
+              <div className={`w-3 h-px ${stages[STAGE_IDS[i + 1]]?.status === 'pending' ? 'bg-border/30' : c.line} transition-colors duration-300`} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────
 
 interface Props {
   project: Project
+  compact?: boolean
 }
 
-export function PipelineFlow({ project }: Props) {
+export function PipelineFlow({ project, compact }: Props) {
   const stages = useMemo(() => deriveStages(project), [project])
-  const nodes = useMemo(() => buildNodes(stages), [stages])
-  const edges = useMemo(() => buildEdges(stages), [stages])
+
+  if (compact) {
+    return <CompactPipeline stages={stages} />
+  }
+
+  const nodes = buildNodes(stages)
+  const edges = buildEdges(stages)
 
   return (
     <div className="w-full h-[100px] rounded-lg border bg-background/50 overflow-hidden">

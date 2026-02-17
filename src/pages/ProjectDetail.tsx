@@ -10,7 +10,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { FeatureList } from '@/components/project/FeatureList'
-import { PipelineFlow } from '@/components/project/PipelineFlow'
 import { AgentLog } from '@/components/agent/AgentLog'
 import { SessionTimeline } from '@/components/agent/SessionTimeline'
 import { HelpDialog } from '@/components/agent/HelpDialog'
@@ -429,14 +428,9 @@ export default function ProjectDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Pipeline visualization */}
-      <div className="mb-3 animate-fade-in">
-        <PipelineFlow project={project} />
-      </div>
-
       {/* Architecture/Feature review preview panel */}
       {fullPanel === 'review' && reviewFileContent !== null && (
-        <Card className="mb-3 p-4 animate-fade-in" style={{ height: 'calc(100vh - 200px)' }}>
+        <Card className="mb-3 p-4 animate-fade-in" style={{ height: 'calc(100vh - 130px)' }}>
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium">
               {currentProject?.reviewPhase === 'architecture' ? '📐 Architecture Review' : '📋 Feature Review'}
@@ -457,7 +451,7 @@ export default function ProjectDetail() {
       )}
 
       {/* Main content: left-right split */}
-      <div className={cn('gap-3', fullPanel ? '' : 'grid grid-cols-1 lg:grid-cols-[380px_1fr]')} style={{ height: 'calc(100vh - 200px)' }}>
+      <div className={cn('gap-3', fullPanel ? '' : 'grid grid-cols-1 lg:grid-cols-[380px_1fr]')} style={{ height: 'calc(100vh - 130px)' }}>
         {/* Left: Feature List */}
         {(!fullPanel || fullPanel === 'features') && (
           <Card className={cn('overflow-hidden animate-slide-in-left flex flex-col', fullPanel === 'features' && 'h-full')}>
