@@ -57,14 +57,14 @@ Configure a custom system prompt for each project, applied uniformly across all 
 - Changes take effect on the next session without interrupting any currently running session
 - Ideal for injecting coding standards, tech stack preferences, language requirements, and other project-level constraints
 
-### 📋 Task List Review Mode
+### 📋 Dual Review Checkpoints
 
-Optionally enable "Review task list after initialization" when creating a project, letting you review and adjust the Feature List before coding begins:
+Two optional review points let you inspect and adjust the AI's work before it proceeds:
 
-- When enabled, the Initializer Agent generates the Feature List and the project enters a `reviewing` state — coding does not start automatically
-- The review UI supports selecting individual or all features; enter modification instructions and click "AI Modify" to have Claude adjust the selected tasks
-- Supports editing descriptions, adjusting steps, splitting/merging/deleting features
-- Click "Confirm and Start Coding" to officially begin the coding phase
+- **Architecture Review** — After the Architecture Agent produces `architecture.md`, the project pauses for review. Inspect the tech stack, directory structure, and design decisions; click "Confirm & Decompose Tasks" to proceed to task decomposition
+- **Feature List Review** — After the Initializer Agent generates `feature_list.json`, the project enters a `reviewing` state. Select individual or all features, enter modification instructions, and click "AI Modify" to have the AI adjust tasks. Supports editing descriptions, adjusting steps, splitting/merging/deleting features. Click "Confirm & Start Coding" to begin the coding phase
+- Both checkpoints are optional — disable them for fully autonomous end-to-end execution
+- `reviewPhase` tracks which phase is under review (`architecture` | `features`); the confirm action routes accordingly
 
 ### 📦 One-Click Import of Existing Projects
 
@@ -73,6 +73,14 @@ Not just for greenfield — import existing code repositories too:
 - Automatically scans directory structure, README.md, CLAUDE.md, docs/*.md, package.json
 - Assembles scanned content into a project spec, pointing directly at the original directory without copying files
 - After import, start the agent to begin autonomous development immediately
+
+### 🔀 Pipeline Flow Visualization
+
+A React Flow–powered pipeline diagram sits at the top of the project detail page, giving an instant visual overview of the current stage:
+
+- Stages: Spec → Architecture → Review → Decompose → Review → Coding → Done
+- Node colors and animated edges reflect live status (active / completed / review / error / paused)
+- Pulse dots on active transitions; the entire flow derives from the project state machine — zero manual sync
 
 ### 🖥️ Real-Time Web Monitoring Dashboard
 
@@ -129,7 +137,7 @@ Reliability designed for real-world use:
 
 | Layer | Technology |
 |---|------|
-| Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 + Radix UI |
+| Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 + Radix UI + React Flow (@xyflow/react) |
 | State Management | Zustand |
 | Backend | Express + WebSocket (ws) |
 | AI Engine | Plugin-based providers (built-in Claude Code CLI, extensible to Codex / Gemini / Aider, etc.) |
@@ -148,8 +156,8 @@ npm start
 ```
 
 - Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:3001`
-- WebSocket: `ws://localhost:3001/ws`
+- Backend API: `http://localhost:4173`
+- WebSocket: `ws://localhost:4173/ws`
 
 Prerequisites: At least one AI coding tool installed and configured (default: [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)).
 
@@ -239,7 +247,7 @@ The frontend provider selector automatically picks up the new option — zero UI
 │   │   └── ProjectDetail.tsx  # Project detail (features + logs + timeline)
 │   ├── components/
 │   │   ├── ui/                # Base UI components (Badge, Card, Dialog, Sheet, etc.)
-│   │   ├── project/           # CreateProjectDialog, ImportProjectDialog, FeatureList
+│   │   ├── project/           # CreateProjectDialog, ImportProjectDialog, FeatureList, PipelineFlow, ProviderSettings
 │   │   └── agent/             # AgentLog, SessionTimeline, HelpDialog
 │   ├── store/index.ts         # Zustand global state
 │   ├── hooks/
@@ -417,12 +425,19 @@ Key mechanisms in parallel mode:
                       │ Start
                       ▼
               ┌──────────────┐
-              │ initializing │  Initializer Agent running
+              │ initializing │  Architecture Agent (Phase 1)
               └──────┬───────┘
-                     │ feature_list.json generated
+                     │ architecture.md generated
                      ▼
               ┌──────────────┐
-              │  reviewing   │  Review mode (optional)
+              │  reviewing   │  Architecture review (optional)
+              │  (arch)      │
+              └──────┬───────┘
+                     │ Confirm → Initializer Agent (Phase 2)
+                     ▼
+              ┌──────────────┐
+              │  reviewing   │  Feature list review (optional)
+              │  (features)  │
               └──────┬───────┘
                      │ Confirm review
                      ▼
