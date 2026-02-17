@@ -31,6 +31,13 @@ export const codexProvider: AgentProvider = {
         { value: 'danger-full-access', label: 'Full access (dangerous)' },
       ],
     },
+    {
+      key: 'baseUrl',
+      label: 'API Base URL',
+      description: 'OpenAI-compatible API base URL (leave empty for default)',
+      type: 'string',
+      default: '',
+    },
   ],
 
   buildArgs(ctx: SessionContext): string[] {
@@ -39,7 +46,6 @@ export const codexProvider: AgentProvider = {
 
     const args = [
       'exec',
-      '--full-auto',
       '--json',
       '--sandbox', sandbox,
     ]
@@ -50,6 +56,12 @@ export const codexProvider: AgentProvider = {
     return args
   },
 
+  buildEnv(ctx: SessionContext): Record<string, string> {
+    const ps = ctx.providerSettings || {}
+    const baseUrl = ps.baseUrl as string
+    return baseUrl ? { OPENAI_BASE_URL: baseUrl } : {}
+  },
+
   parseLine(line: string): AgentEvent | null {
     const trimmed = line.trim()
     if (!trimmed) return null
@@ -58,43 +70,56 @@ export const codexProvider: AgentProvider = {
       const event = JSON.parse(trimmed)
 
       switch (event.type) {
-        case 'message': {
-          const content = event.content || event.text || ''
-          if (!content.trim()) return { type: 'ignore' }
-          return { type: 'text', content }
+        case 'item.started': {
+          const item = event.item || {}
+          if (item.type === 'command_execution' && item.command) {
+            return { type: 'tool_use', name: 'exec', input: item.command.slice(0, 200) }
+          }
+          return { type: 'ignore' }
         }
 
-        case 'function_call':
-        case 'tool_call': {
-          const name = event.name || event.function?.name || 'unknown'
-          const input = event.arguments || event.function?.arguments || ''
-          return { type: 'tool_use', name, input: String(input).slice(0, 200) }
-        }
-
-        case 'function_call_output':
-        case 'tool_call_output': {
-          const output = event.output || event.content || ''
-          return { type: 'tool_result', output: String(output).slice(0, 500) }
+        case 'item.completed': {
+          const item = event.item || {}
+          switch (item.type) {
+            case 'agent_message':
+              return item.text?.trim() ? { type: 'text', content: item.text } : { type: 'ignore' }
+            case 'reasoning':
+              return item.text ? { type: 'thinking', content: item.text.slice(0, 300) } : { type: 'ignore' }
+            case 'tool_call':
+            case 'function_call':
+              return { type: 'tool_use', name: item.name || 'unknown', input: String(item.arguments || '').slice(0, 200) }
+            case 'tool_call_output':
+            case 'function_call_output':
+              return { type: 'tool_result', output: String(item.output || '').slice(0, 500) }
+            case 'command_execution':
+              if (item.status === 'completed') {
+                const output = item.aggregated_output || ''
+                return output.trim()
+                  ? { type: 'tool_result', output: output.slice(0, 500) }
+                  : { type: 'system', content: `$ ${(item.command || '').slice(0, 100)} → exit ${item.exit_code}` }
+              }
+              return { type: 'tool_use', name: 'exec', input: (item.command || '').slice(0, 200) }
+            default:
+              return { type: 'ignore' }
+          }
         }
 
         case 'error':
-          return { type: 'error', content: event.message || event.error || JSON.stringify(event) }
+          return { type: 'error', content: event.message || JSON.stringify(event) }
 
-        case 'status':
-        case 'progress':
-          return { type: 'system', content: event.message || event.status || '' }
+        case 'turn.failed':
+          return { type: 'error', content: event.error?.message || 'turn failed' }
 
-        case 'thinking':
-          return { type: 'thinking', content: (event.content || event.text || '').slice(0, 300) }
+        case 'thread.started':
+        case 'turn.started':
+        case 'turn.completed':
+          return { type: 'ignore' }
 
         default:
           return { type: 'ignore' }
       }
     } catch {
-      if (trimmed) {
-        return { type: 'system', content: trimmed.slice(0, 500) }
-      }
-      return null
+      return trimmed ? { type: 'system', content: trimmed.slice(0, 500) } : null
     }
   },
 
