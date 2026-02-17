@@ -252,7 +252,7 @@ export function PipelineFlow({ project }: Props) {
   return (
     <div className="w-full h-[100px] rounded-lg border bg-background/50 overflow-hidden">
       <ReactFlow
-        key={JSON.stringify(stages)}
+        key={STAGE_IDS.map(id => `${id}:${stages[id]?.status}`).join(',')}
         nodes={buildNodes(stages)}
         edges={buildEdges(stages)}
         nodeTypes={nodeTypes}
