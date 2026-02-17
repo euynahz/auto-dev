@@ -51,40 +51,34 @@ export const opencodeProvider: AgentProvider = {
 
     try {
       const event = JSON.parse(trimmed)
+      const part = event.part || {}
 
-      if (event.response) {
-        return { type: 'text', content: event.response }
+      switch (event.type) {
+        case 'text':
+          return part.text?.trim() ? { type: 'text', content: part.text } : { type: 'ignore' }
+
+        case 'tool_use': {
+          const name = part.tool || 'unknown'
+          const state = part.state || {}
+          if (state.status === 'completed' && state.output) {
+            return { type: 'tool_result', output: String(state.output).slice(0, 500) }
+          }
+          const input = state.input ? JSON.stringify(state.input).slice(0, 200) : ''
+          return { type: 'tool_use', name, input }
+        }
+
+        case 'error':
+          return { type: 'error', content: part.error || event.error || JSON.stringify(event) }
+
+        case 'step_start':
+        case 'step_finish':
+          return { type: 'ignore' }
+
+        default:
+          return { type: 'ignore' }
       }
-
-      if (event.type === 'text' || event.type === 'message') {
-        const content = event.content || event.text || ''
-        return content.trim() ? { type: 'text', content } : { type: 'ignore' }
-      }
-
-      if (event.type === 'tool_call' || event.type === 'function_call') {
-        const name = event.name || event.tool || 'unknown'
-        const input = event.input || event.arguments || ''
-        return { type: 'tool_use', name, input: String(input).slice(0, 200) }
-      }
-
-      if (event.type === 'tool_result' || event.type === 'tool_output') {
-        return { type: 'tool_result', output: (event.output || event.content || '').slice(0, 500) }
-      }
-
-      if (event.type === 'error') {
-        return { type: 'error', content: event.message || event.error || JSON.stringify(event) }
-      }
-
-      if (event.content && typeof event.content === 'string') {
-        return { type: 'text', content: event.content }
-      }
-
-      return { type: 'ignore' }
     } catch {
-      if (trimmed) {
-        return { type: 'system', content: trimmed.slice(0, 500) }
-      }
-      return null
+      return trimmed ? { type: 'system', content: trimmed.slice(0, 500) } : null
     }
   },
 
