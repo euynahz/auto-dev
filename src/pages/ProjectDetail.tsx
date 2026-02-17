@@ -436,7 +436,7 @@ export default function ProjectDetail() {
 
       {/* Architecture/Feature review preview panel */}
       {fullPanel === 'review' && reviewFileContent !== null && (
-        <Card className="mb-3 p-4 animate-fade-in" style={{ height: 'calc(100vh - 152px)' }}>
+        <Card className="mb-3 p-4 animate-fade-in" style={{ height: 'calc(100vh - 200px)' }}>
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium">
               {currentProject?.reviewPhase === 'architecture' ? '📐 Architecture Review' : '📋 Feature Review'}
@@ -457,7 +457,7 @@ export default function ProjectDetail() {
       )}
 
       {/* Main content: left-right split */}
-      <div className={cn('gap-4', fullPanel ? '' : 'grid grid-cols-1 lg:grid-cols-[380px_1fr]')} style={{ height: 'calc(100vh - 152px)' }}>
+      <div className={cn('gap-3', fullPanel ? '' : 'grid grid-cols-1 lg:grid-cols-[380px_1fr]')} style={{ height: 'calc(100vh - 200px)' }}>
         {/* Left: Feature List */}
         {(!fullPanel || fullPanel === 'features') && (
           <Card className={cn('overflow-hidden animate-slide-in-left flex flex-col', fullPanel === 'features' && 'h-full')}>
@@ -479,7 +479,7 @@ export default function ProjectDetail() {
 
         {/* Right: Agent logs + Session timeline */}
         {(!fullPanel || fullPanel === 'logs' || fullPanel === 'sessions') && (
-          <div className={cn('flex flex-col gap-4 overflow-hidden animate-slide-in-right', fullPanel && 'h-full')}>
+          <div className={cn('flex flex-col gap-3 overflow-hidden animate-slide-in-right', fullPanel && 'h-full')}>
             {(!fullPanel || fullPanel === 'logs') && (
               <div className={cn('flex-1 min-h-0 overflow-hidden', fullPanel === 'logs' && 'h-full')}>
                 <AgentLogPanel

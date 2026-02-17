@@ -278,7 +278,7 @@ export function SessionTimeline({ projectId, sessions, features, fullscreen }: P
 
   return (
     <>
-      <div className={cn('overflow-y-auto', fullscreen ? 'h-full' : 'max-h-[280px]')}>
+      <div className={cn('overflow-y-auto', fullscreen ? 'h-full' : 'max-h-[160px]')}>
         <div className="flex flex-col gap-1 pr-1">
           {sorted.map((session, i) => {
             const style = statusStyles[session.status] || { bar: 'bg-gray-500/80 hover:bg-gray-500', badge: 'default' as const, label: session.status }

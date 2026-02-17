@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo } from 'react'
 import {
   ReactFlow,
   Background,
@@ -7,8 +7,6 @@ import {
   type NodeTypes,
   Handle,
   Position,
-  useNodesState,
-  useEdgesState,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { FileText, Brain, Search, ListTree, CheckCircle, Code, Rocket, Loader2, AlertCircle, Pause } from 'lucide-react'
@@ -232,32 +230,15 @@ interface Props {
 
 export function PipelineFlow({ project }: Props) {
   const stages = useMemo(() => deriveStages(project), [project])
-  const initialNodes = useMemo(() => buildNodes(stages), [stages])
-  const initialEdges = useMemo(() => buildEdges(stages), [stages])
-
-  const [nodes, , onNodesChange] = useNodesState(initialNodes)
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges)
-
-  // Sync when stages change
-  useMemo(() => {
-    const newNodes = buildNodes(stages)
-    const newEdges = buildEdges(stages)
-    // Force update by returning — useNodesState doesn't auto-sync
-    // We'll use key-based remount instead
-    return { newNodes, newEdges }
-  }, [stages])
-
-  const totalW = STAGE_IDS.length * (NODE_W + NODE_GAP)
+  const nodes = useMemo(() => buildNodes(stages), [stages])
+  const edges = useMemo(() => buildEdges(stages), [stages])
 
   return (
     <div className="w-full h-[100px] rounded-lg border bg-background/50 overflow-hidden">
       <ReactFlow
-        key={STAGE_IDS.map(id => `${id}:${stages[id]?.status}`).join(',')}
-        nodes={buildNodes(stages)}
-        edges={buildEdges(stages)}
+        nodes={nodes}
+        edges={edges}
         nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
         fitView
         fitViewOptions={{ padding: 0.15 }}
         panOnDrag={false}
