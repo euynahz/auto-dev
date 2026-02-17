@@ -13,7 +13,7 @@ export const opencodeProvider: AgentProvider = {
     maxTurns: false,
     systemPrompt: false,
     agentTeams: false,
-    modelSelection: false,
+    modelSelection: true,
     dangerousMode: false,
   },
 
@@ -35,6 +35,9 @@ export const opencodeProvider: AgentProvider = {
       'run',
       '--format', 'json',
     ]
+    if (ctx.model) {
+      args.push('--model', ctx.model)
+    }
     if (title) {
       args.push('--title', title)
     }
